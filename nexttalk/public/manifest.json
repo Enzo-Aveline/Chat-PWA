@@ -22,12 +22,12 @@
     "screenshots": [
     {
       "src": "/screenshots/mobile/mobile.png",
-      "sizes": "360x640",
+      "sizes": "600x800",
       "type": "image/png"
     },
     {
       "src": "/screenshots/desktop/desktop.png",
-      "sizes": "1920x1080",
+      "sizes": "1280x720",
       "type": "image/png"
     }
   ]
