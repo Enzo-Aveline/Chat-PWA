@@ -1,7 +1,20 @@
 import { openDB } from 'idb';
 
 const DB_NAME = 'nexttalk-db';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // ⬅️ incrémenter la version pour forcer l'upgrade
+
+export interface Message {
+  from: "bot" | "user";
+  text: string;         // si c’est une image, on met l’URL/base64
+  date: Date | string;
+  type: "text" | "image"; // ⬅️ nouvelle propriété
+}
+
+export interface Conversation {
+  id: string;
+  name: string;
+  messages: Message[];
+}
 
 export interface Profile {
   username: string;
@@ -14,6 +27,9 @@ const initDB = async () => {
     upgrade(db) {
       if (!db.objectStoreNames.contains('profile')) {
         db.createObjectStore('profile');
+      }
+      if (!db.objectStoreNames.contains('conversations')) {
+        db.createObjectStore('conversations');
       }
     },
   });
@@ -28,4 +44,32 @@ export async function getProfile(): Promise<Profile | null> {
   const db = await initDB();
   const profile = await db.get('profile', 'userProfile');
   return profile || null;
+}
+
+// --- Conversations ---
+
+export async function saveConversation(conv: Conversation): Promise<void> {
+  const db = await initDB();
+  await db.put('conversations', conv, conv.id);
+}
+
+export async function getConversation(id: string): Promise<Conversation | null> {
+  const db = await initDB();
+  return (await db.get('conversations', id)) || null;
+}
+
+export async function getAllConversations(): Promise<Conversation[]> {
+  const db = await initDB();
+  const all: Conversation[] = [];
+  let cursor = await db.transaction('conversations').store.openCursor();
+  while (cursor) {
+    all.push(cursor.value);
+    cursor = await cursor.continue();
+  }
+  return all;
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  const db = await initDB();
+  await db.delete('conversations', id);
 }
