@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { saveProfile, getProfile } from '@/lib/idb';
 import CameraModal from '@/components/CameraModal';
 import { useRouter } from 'next/navigation';
+import Header from '@/components/Header';
 
 export default function ProfilePage() {
   const [username, setUsername] = useState('');
@@ -57,68 +58,15 @@ export default function ProfilePage() {
     }
   };
 
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: 'user',
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        }
-      });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        setShowCamera(true);
-      }
-    } catch (err) {
-      console.error('Erreur accès caméra:', err);
-    }
-  };
-
-  const takePhoto = () => {
-    if (videoRef.current) {
-      const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        ctx.drawImage(videoRef.current, 0, 0);
-        const photoUrl = canvas.toDataURL('image/jpeg', 0.8);
-        setPreviewPhoto(photoUrl);
-        stopCamera();
-      }
-    }
-  };
-
-  const confirmPhoto = async () => {
-    if (previewPhoto) {
-      setPhoto(previewPhoto);
-      setPreviewPhoto(null);
-      await handleSave();
-    }
-  };
-
-  const cancelPreview = () => {
-    setPreviewPhoto(null);
-  };
-
-  const stopCamera = () => {
-    const stream = videoRef.current?.srcObject as MediaStream;
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    setShowCamera(false);
-  };
-
   if (loading) {
     return <div className="p-4">Chargement...</div>;
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center relative overflow-hidden">
+    <div className="min-h-screen bg-gray-50 flex flex-col relative overflow-hidden">
+      <Header />
+      
+      
       {/* Cercles décoratifs */}
       <div className="absolute -left-32 -top-32 w-96 h-96 bg-blue-600 rounded-full opacity-20 z-0" />
       <div className="absolute -right-24 top-1/2 w-72 h-72 bg-blue-400 rounded-full opacity-20 z-0" />

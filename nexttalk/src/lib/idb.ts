@@ -59,15 +59,41 @@ export async function getConversation(id: string): Promise<Conversation | null> 
 }
 
 export async function getAllConversations(): Promise<Conversation[]> {
-  const db = await initDB();
-  const all: Conversation[] = [];
-  let cursor = await db.transaction('conversations').store.openCursor();
-  while (cursor) {
-    all.push(cursor.value);
-    cursor = await cursor.continue();
+  try {
+    const res = await fetch("https://api.tools.gavago.fr/socketio/api/rooms");
+    if (!res.ok) throw new Error("API non OK");
+
+    const json = await res.json();
+    const rooms: string[] = JSON.parse(json.data);
+
+    const conversations: Conversation[] = rooms.map((room) => ({
+      id: room,
+      name: room,
+      messages: []
+    }));
+
+    const db = await initDB();
+    for (const conv of conversations) {
+      await db.put("conversations", conv); // 🔹 ici plus de conv.id
+    }
+
+    return conversations;
+  } catch (err) {
+    console.warn("⚠️ API indisponible, fallback IDB :", err);
+
+    const db = await initDB();
+    const all: Conversation[] = [];
+    let cursor = await db.transaction("conversations").store.openCursor();
+    while (cursor) {
+      all.push(cursor.value);
+      cursor = await cursor.continue();
+    }
+    return all;
   }
-  return all;
 }
+
+
+
 
 export async function deleteConversation(id: string): Promise<void> {
   const db = await initDB();
