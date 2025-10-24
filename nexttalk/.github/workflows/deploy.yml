@@ -1,0 +1,46 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 🚀 Deploy to Production VPS
+      uses: appleboy/ssh-action@v1.0.0
+      with:
+        host: ${{ secrets.VPS_HOST }}
+        username: ${{ secrets.VPS_USERNAME }}
+        key: ${{ secrets.VPS_SSH_KEY }}
+        port: 22
+        script: |
+          cd /var/Chat-PWA/nexttalk
+          
+          echo "📥 Git pull..."
+          git pull origin main
+          
+          echo "📦 Installation des dépendances..."
+          npm install --production=false
+          
+          echo "📝 Vérification du fichier .env..."
+          if [ ! -f .env ]; then
+            cat > .env << 'ENVEOF'
+          NEXT_PUBLIC_SOCKET_URL=https://api.tools.gavago.fr
+          NODE_ENV=production
+          PORT=3000
+          ENVEOF
+          fi
+          
+          echo "🔨 Build du projet..."
+          npm run build
+          
+          echo "🔄 Redémarrage de l'application..."
+          pm2 restart nexttalk || pm2 start ecosystem.config.js
+          pm2 save
+          
+          echo "✅ Déploiement terminé !"
+          pm2 status nexttalk
