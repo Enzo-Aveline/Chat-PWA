@@ -39,7 +39,6 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
   const [preview, setPreview] = useState<string | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
-  // Fonction pour lancer la caméra
   const startCamera = async () => {
     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
     streamRef.current = stream;
@@ -71,7 +70,6 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
         ctx.drawImage(videoRef.current, 0, 0);
         const photoUrl = canvas.toDataURL('image/jpeg', 0.8);
         setPreview(photoUrl);
-        // on arrête la caméra pendant la preview
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(track => track.stop());
           streamRef.current = null;
@@ -91,28 +89,84 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
 
   const cancelPreview = async () => {
     setPreview(null);
-    await startCamera(); // ⬅️ relance la caméra
+    await startCamera();
   };
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-      <div className="relative bg-gray-100 shadow-2xl w-full h-full flex flex-col items-center overflow-hidden">
-        
+    <div 
+      style={{
+        position: 'fixed',
+        inset: 0,
+        backgroundColor: '#000000',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 9999
+      }}
+    >
+      <div 
+        style={{
+          position: 'relative',
+          width: '100vw',
+          height: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden'
+        }}
+      >
         {preview ? (
           <>
-            <img src={preview} alt="Prévisualisation" className="w-full h-full object-cover" />
-            <div className="absolute bottom-6 left-0 w-full flex justify-center gap-6">
+            <img 
+              src={preview} 
+              alt="Prévisualisation" 
+              style={{ 
+                width: '100%', 
+                height: '100%',
+                objectFit: 'contain',
+                display: 'block'
+              }} 
+            />
+            <div 
+              style={{
+                position: 'absolute',
+                bottom: '2rem',
+                left: 0,
+                width: '100%',
+                display: 'flex',
+                justifyContent: 'center',
+                gap: '1.5rem'
+              }}
+            >
               <button
                 onClick={cancelPreview}
-                className="px-6 py-3 rounded-full bg-gray-700 text-white font-medium shadow hover:bg-gray-600 transition"
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  borderRadius: '9999px',
+                  backgroundColor: '#374151',
+                  color: 'white',
+                  fontWeight: '600',
+                  boxShadow: '0 4px 6px rgba(0,0,0,0.5)',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
               >
                 ❌ Reprendre
               </button>
               <button
                 onClick={confirmPhoto}
-                className="px-6 py-3 rounded-full bg-blue-600 text-white font-medium shadow hover:bg-blue-700 transition"
+                style={{
+                  padding: '0.75rem 1.5rem',
+                  borderRadius: '9999px',
+                  backgroundColor: '#2563eb',
+                  color: 'white',
+                  fontWeight: '600',
+                  boxShadow: '0 4px 6px rgba(0,0,0,0.5)',
+                  border: 'none',
+                  cursor: 'pointer'
+                }}
               >
                 ✅ Valider
               </button>
@@ -122,13 +176,43 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
           <>
             <button
               onClick={() => setShowFilters(v => !v)}
-              className="absolute left-3 top-1/2 -translate-y-1/2 z-30 bg-white/80 rounded-full shadow p-2 border border-blue-100 hover:bg-blue-50 transition"
+              style={{
+                position: 'absolute',
+                left: '1rem',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                zIndex: 30,
+                backgroundColor: 'rgba(255,255,255,0.9)',
+                borderRadius: '9999px',
+                boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+                padding: '0.5rem',
+                border: '1px solid #dbeafe',
+                cursor: 'pointer'
+              }}
             >
               <FilterIcon />
             </button>
 
             {showFilters && (
-              <div className="absolute left-14 top-1/2 -translate-y-1/2 z-30 bg-white/95 rounded-2xl shadow-lg p-3 flex flex-col gap-2 border border-gray-200">
+              <div 
+                style={{
+                  position: 'absolute',
+                  left: '4rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  zIndex: 30,
+                  backgroundColor: 'rgba(255,255,255,0.95)',
+                  borderRadius: '1rem',
+                  boxShadow: '0 10px 25px rgba(0,0,0,0.3)',
+                  padding: '0.75rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                  border: '1px solid #e5e7eb',
+                  maxHeight: '80vh',
+                  overflowY: 'auto'
+                }}
+              >
                 {FILTERS.map(f => (
                   <button
                     key={f.name}
@@ -136,14 +220,29 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
                       setFilter(f.value);
                       setShowFilters(false);
                     }}
-                    className={`flex items-center gap-2 px-2 py-1 rounded-lg text-sm font-medium transition
-                      ${filter === f.value ? 'bg-blue-600 text-white' : 'bg-transparent text-gray-700 hover:bg-blue-100'}`}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      padding: '0.5rem',
+                      borderRadius: '0.5rem',
+                      fontSize: '0.875rem',
+                      fontWeight: '600',
+                      backgroundColor: filter === f.value ? '#2563eb' : 'transparent',
+                      color: filter === f.value ? 'white' : '#374151',
+                      border: 'none',
+                      cursor: 'pointer'
+                    }}
                   >
                     <span
-                      className="inline-block w-7 h-7 rounded-full border border-gray-200"
                       style={{
+                        display: 'inline-block',
+                        width: '1.75rem',
+                        height: '1.75rem',
+                        borderRadius: '9999px',
+                        border: '1px solid #e5e7eb',
                         filter: f.value || 'none',
-                        background: 'url("/icons/icon-192.png") center/cover no-repeat',
+                        background: 'url("/icons/icon-192.png") center/cover no-repeat'
                       }}
                     />
                     {f.name}
@@ -156,27 +255,95 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
               ref={videoRef}
               autoPlay
               playsInline
-              style={{ filter: filter || 'none' }}
-              className="w-full h-full object-cover transition-all duration-200"
+              style={{ 
+                filter: filter || 'none',
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                display: 'block'
+              }}
             />
 
-            <div className="absolute bottom-0 left-0 w-full flex flex-col items-center pb-6 z-10">
-              <div className="flex items-center justify-center gap-8 mb-4">
+            <div 
+              style={{
+                position: 'absolute',
+                bottom: 0,
+                left: 0,
+                width: '100%',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                paddingBottom: '2rem',
+                zIndex: 10
+              }}
+            >
+              <div 
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '2rem',
+                  marginBottom: '1rem'
+                }}
+              >
                 <button
                   onClick={onClose}
-                  className="w-12 h-12 rounded-full bg-gray-200/80 flex items-center justify-center text-gray-600 text-lg font-bold shadow hover:bg-gray-300 transition"
+                  style={{
+                    width: '3.5rem',
+                    height: '3.5rem',
+                    borderRadius: '9999px',
+                    backgroundColor: 'rgba(255,255,255,0.9)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#4b5563',
+                    fontSize: '1.25rem',
+                    fontWeight: '700',
+                    boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+                    border: 'none',
+                    cursor: 'pointer'
+                  }}
                 >
                   ✕
                 </button>
                 <button
                   onClick={takePhoto}
-                  className="w-16 h-16 rounded-full border-4 border-white bg-blue-600 flex items-center justify-center shadow-lg active:scale-95 transition"
+                  style={{
+                    width: '4.5rem',
+                    height: '4.5rem',
+                    borderRadius: '9999px',
+                    border: '4px solid white',
+                    backgroundColor: '#2563eb',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 10px 25px rgba(0,0,0,0.4)',
+                    cursor: 'pointer'
+                  }}
                 >
-                  <span className="block w-10 h-10 rounded-full bg-white" />
+                  <span 
+                    style={{
+                      display: 'block',
+                      width: '2.75rem',
+                      height: '2.75rem',
+                      borderRadius: '9999px',
+                      backgroundColor: 'white'
+                    }}
+                  />
                 </button>
-                <div className="w-12 h-12" />
+                <div style={{ width: '3.5rem', height: '3.5rem' }} />
               </div>
-              <span className="text-white text-xs opacity-80">Appuyez pour prendre une photo</span>
+              <span 
+                style={{
+                  color: 'white',
+                  fontSize: '0.875rem',
+                  fontWeight: '500',
+                  opacity: 0.9,
+                  textShadow: '0 2px 4px rgba(0,0,0,0.5)'
+                }}
+              >
+                Appuyez pour prendre une photo
+              </span>
             </div>
           </>
         )}

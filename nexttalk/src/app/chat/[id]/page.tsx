@@ -1,190 +1,193 @@
-'use client';
+"use client";
+import React, { useEffect, useRef, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import socket, { joinRoom, leaveRoom, ChatMessage } from "../../../lib/socket";
 
-import { useState, useEffect, useRef } from "react";
-import { useRouter, useParams } from "next/navigation";
-import Image from "next/image";
-import { getAllConversations, saveConversation, getProfile, Conversation, Message } from "@/lib/idb";
-import CameraModal from "@/components/CameraModal";
-
-function formatHour(date: Date | string) {
-  const d = typeof date === "string" ? new Date(date) : date;
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-export default function ChatConvPage() {
-  const router = useRouter();
+export default function ChatRoomPage() {
   const params = useParams();
-  const convId = Array.isArray(params.id) ? params.id[0] : params.id;
+  const rawId = params?.id as string | string[] | undefined;
+  const roomId: string = Array.isArray(rawId) ? rawId[0] : rawId ?? "unknown";
 
-  const [profile, setProfile] = useState<{ username: string; photo: string | null }>({ username: "", photo: null });
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [currentConv, setCurrentConv] = useState<Conversation | undefined>();
+  const router = useRouter();
+
+  const [pseudo] = useState<string>(() => 
+    typeof window !== "undefined" ? localStorage.getItem("pseudo") || "Invité" : "Invité"
+  );
+  const [photo] = useState<string | null>(() => 
+    typeof window !== "undefined" ? localStorage.getItem("photo") : null
+  );
+
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [cameraOpen, setCameraOpen] = useState(false);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const mountedRef = useRef(false);
 
-  // Charger profil et conversations
   useEffect(() => {
-    getProfile().then(p => {
-      if (p) setProfile({ username: p.username, photo: p.photo });
-    });
+    // Prevent double mount in Strict Mode
+    if (mountedRef.current) return;
+    mountedRef.current = true;
 
-    getAllConversations().then(convs => {
-      setConversations(convs);
-    });
-  }, []);
+    joinRoom(pseudo, roomId);
 
-  // Mettre à jour la conversation courante
-  useEffect(() => {
-    const conv = conversations.find(c => c.id === convId);
-    setCurrentConv(conv);
-  }, [conversations, convId]);
-
-  // Scroll automatique
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [currentConv?.messages]);
-
-  // Envoyer un message texte
-  const handleSend = async () => {
-    if (!input.trim() || !currentConv) return;
-
-    const now = new Date();
-    const newMsg: Message = { from: "user", text: input, date: now, type: "text" };
-    const updatedConv: Conversation = {
-      ...currentConv,
-      messages: [...currentConv.messages, newMsg]
+    const handleBeforeUnload = () => {
+      try {
+        leaveRoom(roomId);
+      } catch {}
     };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    window.addEventListener("pagehide", handleBeforeUnload);
 
-    setConversations(prev =>
-      prev.map(c => (c.id === convId ? updatedConv : c))
-    );
-    await saveConversation(updatedConv);
+    function handleNewMessage(msg: ChatMessage) {
+      setMessages((prev) => {
+        // Avoid duplicate messages with same content and timestamp
+        const isDuplicate = prev.some(
+          m => m.content === msg.content && 
+               m.pseudo === msg.pseudo && 
+               Math.abs(new Date(m.dateEmis).getTime() - new Date(msg.dateEmis).getTime()) < 1000
+        );
+        if (isDuplicate) return prev;
+        return [...prev, msg];
+      });
+    }
 
-    // Réponse bot
-    setTimeout(async () => {
-      const botReply: Message = { from: "bot", text: "I'm just a demo bot 🤖", date: new Date(), type: "text" };
-      const convWithBot = {
-        ...updatedConv,
-        messages: [...updatedConv.messages, botReply]
+    function handleUserJoin(info: any) {
+      // Ne rien faire ici - on laisse seulement le serveur envoyer le message via chat-msg
+    }
+
+    function handleUserLeave(info: any) {
+      // Ne rien faire ici - on laisse seulement le serveur envoyer le message via chat-msg
+    }
+
+    function handleError(err: any) {
+      const m: ChatMessage = {
+        pseudo: "SERVER",
+        content: typeof err === "string" ? err : JSON.stringify(err),
+        dateEmis: new Date().toISOString(),
+        category: "INFO",
       };
-      setConversations(prev =>
-        prev.map(c => (c.id === convId ? convWithBot : c))
-      );
-      await saveConversation(convWithBot);
-    }, 600);
+      setMessages((prev) => [...prev, m]);
+    }
 
-    setInput("");
-  };
+    socket.on("chat-msg", handleNewMessage);
+    socket.on("chat-joined-room", handleUserJoin);
+    socket.on("chat-disconnected", handleUserLeave);
+    socket.on("error", handleError);
 
-  // Envoyer une photo depuis CameraModal
-  const handleSendPhoto = async (photo: string) => {
-    if (!currentConv) return;
-    const now = new Date();
-    const newMsg: Message = { from: "user", text: photo, date: now, type: "image" };
-    const updatedConv: Conversation = {
-      ...currentConv,
-      messages: [...currentConv.messages, newMsg]
+    return () => {
+      try {
+        leaveRoom(roomId);
+      } catch {}
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      window.removeEventListener("pagehide", handleBeforeUnload);
+
+      socket.off("chat-msg", handleNewMessage);
+      socket.off("chat-joined-room", handleUserJoin);
+      socket.off("chat-disconnected", handleUserLeave);
+      socket.off("error", handleError);
+      
+      mountedRef.current = false;
     };
-    setConversations(prev =>
-      prev.map(c => (c.id === convId ? updatedConv : c))
-    );
-    await saveConversation(updatedConv);
-  };
+  }, [roomId, pseudo]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") handleSend();
-  };
+  useEffect(() => {
+    if (listRef.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight;
+    }
+  }, [messages]);
 
-  if (!currentConv) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="bg-white p-8 rounded-2xl shadow text-blue-600">
-          Conversation introuvable.<br />
-          <button className="underline" onClick={() => router.push("/chat/menu")}>Retour au menu</button>
-        </div>
-      </div>
-    );
+  const sendingRef = useRef(false);
+
+  function sendMessage() {
+    if (!input.trim() || sendingRef.current) return;
+    
+    sendingRef.current = true;
+    const content = input.trim();
+
+    socket.emit("chat-msg", { content, roomName: roomId, pseudo });
+    setInput("");
+    
+    setTimeout(() => {
+      sendingRef.current = false;
+    }, 500);
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center relative overflow-hidden">
-      <div className="relative z-10 w-full max-w-2xl mx-auto bg-blue-100 rounded-[2.5rem] shadow-2xl flex flex-col overflow-hidden" style={{ minHeight: 540, maxHeight: 700 }}>
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 bg-blue-600 rounded-t-[2.5rem]">
-          <button
-            className="text-white text-2xl font-bold opacity-70 hover:opacity-100 transition"
-            onClick={() => router.push("/chat/menu")}
-            aria-label="Menu"
-          >
-            &lt;
-          </button>
-          <div className="flex-1 flex justify-center">
-            <div className="text-white text-lg font-semibold">
-              {currentConv.name}
+    <div className="chat-container">
+      <header className="chat-header">
+        <div className="header-content">
+          <div className="header-left">
+            {photo ? (
+              <img src={photo} alt="avatar" className="avatar" />
+            ) : (
+              <div className="avatar avatar-placeholder">
+                {pseudo[0]?.toUpperCase()}
+              </div>
+            )}
+            <div>
+              <div className="title">{pseudo}</div>
+              <div className="subtitle">Room: {roomId}</div>
             </div>
           </div>
-          <div className="text-white text-2xl font-bold opacity-70 hover:opacity-100 transition">&#9776;</div>
+          <button
+            onClick={() => {
+              try {
+                leaveRoom(roomId);
+              } catch {}
+              router.push("/chat/menu");
+            }}
+            className="btn btn-ghost btn-sm"
+          >
+            Quitter
+          </button>
         </div>
+      </header>
 
-        {/* Messages */}
-        <div className="flex-1 px-6 py-4 flex flex-col gap-3 overflow-y-auto bg-blue-100" style={{ minHeight: 350 }}>
-          {currentConv.messages.map((msg, i) => (
-            <div key={i} className={`flex ${msg.from === "user" ? "justify-end" : "justify-start"}`}>
-              <div className="flex flex-col items-end max-w-[70%]">
-                {msg.from === "user" && profile.username && (
-                  <span className="text-xs text-blue-600 font-semibold">{profile.username}</span>
-                )}
-                {msg.type === "image" ? (
-                  <img
-                    src={msg.text}
-                    alt="Envoyé"
-                    className="rounded-2xl shadow max-w-[200px] max-h-[200px] object-cover"
-                  />
-                ) : (
-                  <div className={`px-4 py-2 rounded-2xl shadow ${msg.from === "user" ? "bg-blue-400 text-white rounded-br-[0.75rem]" : "bg-white text-blue-600 rounded-bl-[0.75rem]"} w-fit text-base font-medium`}>
-                    {msg.text}
-                  </div>
-                )}
-                <span className="text-[11px] text-gray-400 mt-1 self-end">{formatHour(msg.date)}</span>
+      <main className="chat-messages" ref={listRef}>
+        {messages.map((m, idx) => {
+          const isMe = m.pseudo === pseudo;
+          const isServer = m.pseudo === "SERVER" || m.category === "INFO";
+          
+          if (isServer) {
+            return (
+              <div key={idx} className="message-info">
+                {m.content}{" "}
+                <span className="message-meta">
+                  {new Date(m.dateEmis).toLocaleTimeString()}
+                </span>
+              </div>
+            );
+          }
+          
+          return (
+            <div key={idx} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
+              <div className={`message ${isMe ? 'message-sent' : 'message-received'}`}>
+                <div className="message-author">{isMe ? "Vous" : m.pseudo}</div>
+                <div>{m.content}</div>
+                <div className="message-meta">
+                  {new Date(m.dateEmis).toLocaleTimeString()}
+                </div>
               </div>
             </div>
-          ))}
-          <div ref={messagesEndRef} />
-        </div>
+          );
+        })}
+      </main>
 
-        {/* Input */}
-        <div className="bg-white px-4 py-3 flex items-center gap-2 rounded-b-[2.5rem] border-t border-blue-200">
-          <button
-            onClick={() => setCameraOpen(true)}
-            className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white shadow hover:bg-blue-500 transition"
-          >
-            📷
-          </button>
+      <footer className="chat-footer">
+        <div className="chat-input-group">
           <input
-            type="text"
             value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            className="flex-1 bg-transparent outline-none text-blue-600 text-base px-2"
-            placeholder="Écris ton message..."
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") sendMessage();
+            }}
+            placeholder="Écrire un message..."
+            className="input chat-input"
           />
-          <button
-            onClick={handleSend}
-            className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white shadow hover:bg-blue-500 transition"
-            aria-label="Envoyer"
-          >
-            &#9658;
+          <button onClick={sendMessage} className="btn btn-primary">
+            Envoyer
           </button>
         </div>
-      </div>
-
-      {/* Camera */}
-      <CameraModal
-        open={cameraOpen}
-        onClose={() => setCameraOpen(false)}
-        onPhoto={handleSendPhoto}
-      />
+      </footer>
     </div>
   );
 }

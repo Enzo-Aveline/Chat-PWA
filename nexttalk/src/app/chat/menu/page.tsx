@@ -1,109 +1,136 @@
-'use client';
-
-import { useEffect, useState } from "react";
+"use client";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getAllConversations, saveConversation, deleteConversation, Conversation } from "@/lib/idb";
+import CreateRoomModal from "../../../components/CreateRoomModal";
+import Toast from "../../../components/Toast";
+import { useToast } from "../../../hooks/useToast";
+
+type Room = {
+  rawKey: string;
+  name: string;
+  clients: number;
+};
 
 export default function ChatMenuPage() {
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const router = useRouter();
-  const [conversations, setConversations] = useState<Conversation[]>([]);
-  const [showModal, setShowModal] = useState(false);
-  const [newName, setNewName] = useState("");
+  const { toasts, removeToast, showError, showSuccess } = useToast();
+
+  const loadRooms = () => {
+    fetch("https://api.tools.gavago.fr/socketio/api/rooms")
+      .then((r) => r.json())
+      .then((json) => {
+        const data = json?.data ?? {};
+        const list: Room[] = Object.keys(data).map((rawKey) => {
+          const room = data[rawKey] ?? {};
+          const clientsObj = room?.clients ?? {};
+          const clientsCount = Object.keys(clientsObj).length;
+          const name = (() => {
+            try {
+              return decodeURIComponent(rawKey);
+            } catch {
+              return rawKey;
+            }
+          })();
+          return { rawKey, name, clients: clientsCount };
+        });
+        setRooms(list);
+      })
+      .catch(() => {
+        setRooms([]);
+      });
+  };
 
   useEffect(() => {
-    getAllConversations().then(setConversations);
+    loadRooms();
+    const interval = setInterval(loadRooms, 5000);
+    return () => clearInterval(interval);
   }, []);
 
-  const handleOpenModal = () => {
-    setNewName("");
-    setShowModal(true);
-  };
+  const pseudo = typeof window !== "undefined" ? localStorage.getItem("pseudo") : null;
+  const photo = typeof window !== "undefined" ? localStorage.getItem("photo") : null;
 
-  const handleCreateConversation = async () => {
-    if (!newName.trim()) return;
+  function openRoom(name: string) {
+    router.push(`/chat/${encodeURIComponent(name)}`);
+  }
 
-    const newConv: Conversation = {
-      id: Date.now().toString(),
-      name: newName.trim(),
-      messages: []
-    };
-
-    await saveConversation(newConv);
-    setConversations(prev => [...prev, newConv]);
-    setShowModal(false);
-    router.push(`/chat/${newConv.id}`);
-  };
-
-  const handleDelete = async (id: string) => {
-    await deleteConversation(id);
-    setConversations(prev => prev.filter(c => c.id !== id));
-  };
+  function handleRoomCreated(roomName: string) {
+    showSuccess(`Room "${roomName}" créée avec succès !`);
+    loadRooms();
+    setTimeout(() => {
+      openRoom(roomName);
+    }, 500);
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 relative flex flex-col items-center p-6">
-      <h1 className="text-2xl text-gray-800 font-bold mb-6">Mes conversations</h1>
-
-      <button
-        onClick={handleOpenModal}
-        className="mb-6 px-6 py-3 bg-blue-600 text-white rounded-[2.5rem] shadow hover:bg-blue-500 transition"
-      >
-        Nouvelle conversation
-      </button>
-
-      <div className="w-full max-w-2xl flex flex-col gap-4">
-        {conversations.map((conv) => (
-          <div
-            key={conv.id}
-            className="bg-blue-100 rounded-[2.5rem] p-4 flex justify-between items-center shadow cursor-pointer hover:bg-blue-200 transition"
-          >
+    <>
+      <div className="page">
+        <div className="container-sm">
+          <header className="header-content">
+            <div className="header-left">
+              {photo ? (
+                <img src={photo} alt="avatar" className="avatar" />
+              ) : (
+                <div className="avatar avatar-placeholder">
+                  {pseudo?.[0]?.toUpperCase() || "I"}
+                </div>
+              )}
+              <div>
+                <h1 className="title">{pseudo || "Invité"}</h1>
+                <p className="subtitle">Sélectionne une room</p>
+              </div>
+            </div>
             <button
-              className="flex-1 text-left font-medium text-blue-800"
-              onClick={() => router.push(`/chat/${conv.id}`)}
+              onClick={() => setShowCreateModal(true)}
+              className="btn btn-primary"
+              style={{ whiteSpace: 'nowrap' }}
             >
-              {conv.name} ({conv.messages.length} message{conv.messages.length > 1 ? 's' : ''})
+              + Créer
             </button>
-            <button
-              className="text-red-500 hover:underline"
-              onClick={() => handleDelete(conv.id)}
-            >
-              Supprimer
-            </button>
-          </div>
-        ))}
-        {conversations.length === 0 && (
-          <p className="text-gray-500 text-center mt-8">Aucune conversation pour l'instant</p>
-        )}
+          </header>
+
+          <ul className="room-list">
+            {rooms.length === 0 && (
+              <li className="text-muted" style={{ textAlign: 'center', padding: '2rem' }}>
+                Aucune room trouvée. Crée-en une !
+              </li>
+            )}
+            {rooms.map((r) => (
+              <li
+                key={r.rawKey}
+                onClick={() => openRoom(r.name)}
+                className="room-item card-hover"
+              >
+                <div className="room-content">
+                  <div className="room-title">{r.name}</div>
+                  <div className="room-meta">{r.clients} connecté(s)</div>
+                </div>
+                <button className="btn btn-ghost btn-sm">Rejoindre</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <CreateRoomModal
+          open={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onRoomCreated={handleRoomCreated}
+          onError={showError}
+        />
       </div>
 
-      {/* Modal pour nouvelle conversation */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-[2.5rem] shadow p-6 w-80 flex flex-col gap-4">
-            <h2 className="text-lg font-semibold text-gray-800">Nom de la conversation</h2>
-            <input
-              type="text"
-              value={newName}
-              onChange={(e) => setNewName(e.target.value)}
-              placeholder="Entrez un nom"
-              className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-800"
-            />
-            <div className="flex justify-end gap-2 mt-2">
-              <button
-                onClick={() => setShowModal(false)}
-                className="text-gray-800 px-4 py-2 rounded bg-gray-200 hover:bg-gray-300 transition"
-              >
-                Annuler
-              </button>
-              <button
-                onClick={handleCreateConversation}
-                className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-500 transition"
-              >
-                Créer
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      {/* Affichage des toasts */}
+      <div style={{ position: 'fixed', top: 0, right: 0, zIndex: 10000 }}>
+        {toasts.map((toast) => (
+          <Toast
+            key={toast.id}
+            message={toast.message}
+            type={toast.type}
+            onClose={() => removeToast(toast.id)}
+          />
+        ))}
+      </div>
+    </>
   );
 }

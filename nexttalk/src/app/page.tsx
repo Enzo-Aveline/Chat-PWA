@@ -1,53 +1,92 @@
 'use client';
-
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import Image from "next/image";
-import { getProfile, Profile, saveProfile } from "@/lib/idb";
-import Header from "@/components/Header";
+import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { getProfile, Profile } from '../lib/idb';
 
 export default function HomePage() {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getProfile().then((p) => setProfile(p));
+    getProfile().then((p) => {
+      setProfile(p);
+      setLoading(false);
+    });
   }, []);
 
   const handleLoginOrMenu = () => {
-    if (profile) {
-      router.push("/chat/menu"); // Déjà connecté, va au menu
+    if (profile?.username) {
+      router.push('/chat/menu');
     } else {
-      router.push("/login"); // Non connecté, redirige vers connexion
+      router.push('/login');
     }
   };
 
-  const handleLogout = async () => {
-    if (profile) {
-      // Supprime le profil
-      await saveProfile({ username: "", photo: null, dirty: false });
-      setProfile(null);
-      router.push("/"); // Retour à l'accueil
-    }
-  };
+  if (loading) {
+    return (
+      <div className="page">
+        <div className="loading">
+          <div className="spinner"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      <Header />
+    <div className="page">
+      <div className="container">
+        <div style={{ 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          minHeight: 'calc(100vh - 4rem)',
+          gap: '2rem',
+          textAlign: 'center'
+        }}>
+          <div>
+            <h1 style={{ fontSize: '3rem', fontWeight: '800', marginBottom: '1rem' }}>
+              NextTalk
+            </h1>
+            <p className="subtitle" style={{ fontSize: '1.2rem' }}>
+              Rejoins des conversations en temps réel
+            </p>
+          </div>
 
-      {/* Contenu principal */}
-      <main className="flex-1 flex flex-col items-center justify-center p-6">
-        <h2 className="text-3xl font-bold text-blue-600 mb-4">Bienvenue sur NextTalk</h2>
-        <p className="text-gray-700 mb-6 text-center max-w-md">
-          Une messagerie instantanée moderne, progressive et offline-friendly.
-        </p>
-        <button
-          onClick={handleLoginOrMenu}
-          className="px-6 py-3 bg-blue-600 text-white rounded-[2.5rem] shadow hover:bg-blue-500 transition"
-        >
-          {profile ? "Accéder à mes conversations" : "Se connecter"}
-        </button>
-      </main>
+          {profile?.username && (
+            <div className="card" style={{ padding: '1.5rem', textAlign: 'center' }}>
+              <div className="profile-avatar-section">
+                {profile.photo ? (
+                  <img src={profile.photo} alt="avatar" className="avatar avatar-lg" />
+                ) : (
+                  <div className="avatar avatar-lg avatar-placeholder">
+                    {profile.username[0]?.toUpperCase()}
+                  </div>
+                )}
+                <div>
+                  <div className="title">{profile.username}</div>
+                  <div className="subtitle">Bienvenue !</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'center' }}>
+            <button onClick={handleLoginOrMenu} className="btn btn-primary">
+              {profile?.username ? 'Accéder au Chat' : 'Se connecter'}
+            </button>
+            {profile?.username && (
+              <button 
+                onClick={() => router.push('/login')} 
+                className="btn btn-secondary"
+              >
+                Modifier le profil
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
