@@ -37,16 +37,39 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
   const [filter, setFilter] = useState<string>('');
   const [showFilters, setShowFilters] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
+  const [showGallery, setShowGallery] = useState(false);
+  const [storedPhotos, setStoredPhotos] = useState<string[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
+  useEffect(() => {
+    const saved = localStorage.getItem('chat_camera_photos');
+    if (saved) {
+      try {
+        setStoredPhotos(JSON.parse(saved));
+      } catch (e) {
+        console.error("Failed to parse photos", e);
+      }
+    }
+  }, []);
+
+  const savePhotoToGallery = (photo: string) => {
+    const newPhotos = [photo, ...storedPhotos];
+    setStoredPhotos(newPhotos);
+    localStorage.setItem('chat_camera_photos', JSON.stringify(newPhotos));
+  };
+
   const startCamera = async () => {
-    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
-    streamRef.current = stream;
-    if (videoRef.current) videoRef.current.srcObject = stream;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+      streamRef.current = stream;
+      if (videoRef.current) videoRef.current.srcObject = stream;
+    } catch (err) {
+      console.error('Error accessing camera:', err);
+    }
   };
 
   useEffect(() => {
-    if (open) {
+    if (open && !showGallery) { // Only start camera if gallery is not open (optional, but saves resources)
       startCamera();
     }
     return () => {
@@ -55,8 +78,16 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
         streamRef.current = null;
       }
       if (videoRef.current) videoRef.current.srcObject = null;
-      setPreview(null);
     };
+  }, [open, showGallery]);
+
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!open) {
+      setPreview(null);
+      setShowGallery(false);
+      setFilter('');
+    }
   }, [open]);
 
   const takePhoto = () => {
@@ -81,21 +112,80 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
 
   const confirmPhoto = () => {
     if (preview) {
+      savePhotoToGallery(preview);
       onPhoto(preview);
       onClose();
       setPreview(null);
     }
   };
 
+  const selectFromGallery = (photo: string) => {
+    onPhoto(photo);
+    onClose();
+  };
+
   const cancelPreview = async () => {
     setPreview(null);
+    // Camera restarts via effect when preview is null? No, startCamera is called in effect dependening on [open].
+    // If I clear preview, I need to ensuring camera is running.
+    // The previous implementation called startCamera explicitly in cancelPreview.
     await startCamera();
   };
 
   if (!open) return null;
 
+  if (showGallery) {
+    return (
+      <div
+        style={{
+          position: 'fixed',
+          inset: 0,
+          backgroundColor: '#000000',
+          zIndex: 9999,
+          display: 'flex',
+          flexDirection: 'column'
+        }}
+      >
+        <div style={{ padding: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #374151' }}>
+          <h2 style={{ color: 'white', fontSize: '1.25rem', fontWeight: 'bold' }}>Galerie</h2>
+          <button
+            onClick={() => setShowGallery(false)}
+            style={{ padding: '0.5rem', background: 'transparent', border: 'none', color: 'white', fontSize: '1.5rem', cursor: 'pointer' }}
+          >
+            ✕
+          </button>
+        </div>
+        <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
+          {storedPhotos.length === 0 ? (
+            <p style={{ color: '#9ca3af', textAlign: 'center', marginTop: '2rem' }}>Aucune photo enregistrée</p>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem' }}>
+              {storedPhotos.map((photo, index) => (
+                <button
+                  key={index}
+                  onClick={() => selectFromGallery(photo)}
+                  style={{
+                    border: 'none',
+                    padding: 0,
+                    background: 'transparent',
+                    cursor: 'pointer',
+                    aspectRatio: '1',
+                    overflow: 'hidden',
+                    borderRadius: '0.5rem'
+                  }}
+                >
+                  <img src={photo} alt={`Photo ${index + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div 
+    <div
       style={{
         position: 'fixed',
         inset: 0,
@@ -106,7 +196,7 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
         zIndex: 9999
       }}
     >
-      <div 
+      <div
         style={{
           position: 'relative',
           width: '100vw',
@@ -119,17 +209,17 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
       >
         {preview ? (
           <>
-            <img 
-              src={preview} 
-              alt="Prévisualisation" 
-              style={{ 
-                width: '100%', 
+            <img
+              src={preview}
+              alt="Prévisualisation"
+              style={{
+                width: '100%',
                 height: '100%',
                 objectFit: 'contain',
                 display: 'block'
-              }} 
+              }}
             />
-            <div 
+            <div
               style={{
                 position: 'absolute',
                 bottom: '2rem',
@@ -194,7 +284,7 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
             </button>
 
             {showFilters && (
-              <div 
+              <div
                 style={{
                   position: 'absolute',
                   left: '4rem',
@@ -255,7 +345,7 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
               ref={videoRef}
               autoPlay
               playsInline
-              style={{ 
+              style={{
                 filter: filter || 'none',
                 width: '100%',
                 height: '100%',
@@ -264,7 +354,7 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
               }}
             />
 
-            <div 
+            <div
               style={{
                 position: 'absolute',
                 bottom: 0,
@@ -277,7 +367,7 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
                 zIndex: 10
               }}
             >
-              <div 
+              <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
@@ -321,7 +411,7 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
                     cursor: 'pointer'
                   }}
                 >
-                  <span 
+                  <span
                     style={{
                       display: 'block',
                       width: '2.75rem',
@@ -331,9 +421,26 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
                     }}
                   />
                 </button>
-                <div style={{ width: '3.5rem', height: '3.5rem' }} />
+                <button
+                  onClick={() => setShowGallery(true)}
+                  style={{
+                    width: '3.5rem',
+                    height: '3.5rem',
+                    borderRadius: '9999px',
+                    backgroundColor: 'rgba(255,255,255,0.9)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#4b5563',
+                    boxShadow: '0 4px 6px rgba(0,0,0,0.3)',
+                    border: 'none',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <GalleryIcon />
+                </button>
               </div>
-              <span 
+              <span
                 style={{
                   color: 'white',
                   fontSize: '0.875rem',
@@ -349,5 +456,15 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
         )}
       </div>
     </div>
+  );
+}
+
+function GalleryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width={24} height={24}>
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <polyline points="21 15 16 10 5 21" />
+    </svg>
   );
 }
