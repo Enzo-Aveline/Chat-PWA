@@ -6,6 +6,7 @@ export type ChatMessage = {
   content: string;
   dateEmis: string;
   category?: "MESSAGE" | "INFO" | string;
+  roomName?: string;
 };
 
 type ServerToClient = {

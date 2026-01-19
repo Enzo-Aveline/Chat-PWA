@@ -10,10 +10,10 @@ export default function ChatRoomPage() {
 
   const router = useRouter();
 
-  const [pseudo] = useState<string>(() => 
+  const [pseudo] = useState<string>(() =>
     typeof window !== "undefined" ? localStorage.getItem("pseudo") || "Invité" : "Invité"
   );
-  const [photo] = useState<string | null>(() => 
+  const [photo] = useState<string | null>(() =>
     typeof window !== "undefined" ? localStorage.getItem("photo") : null
   );
 
@@ -32,18 +32,23 @@ export default function ChatRoomPage() {
     const handleBeforeUnload = () => {
       try {
         leaveRoom(roomId);
-      } catch {}
+      } catch { }
     };
     window.addEventListener("beforeunload", handleBeforeUnload);
     window.addEventListener("pagehide", handleBeforeUnload);
 
     function handleNewMessage(msg: ChatMessage) {
+      // Filter out messages that don't belong to the current room
+      if (msg.roomName && msg.roomName !== roomId) {
+        return;
+      }
+
       setMessages((prev) => {
         // Avoid duplicate messages with same content and timestamp
         const isDuplicate = prev.some(
-          m => m.content === msg.content && 
-               m.pseudo === msg.pseudo && 
-               Math.abs(new Date(m.dateEmis).getTime() - new Date(msg.dateEmis).getTime()) < 1000
+          m => m.content === msg.content &&
+            m.pseudo === msg.pseudo &&
+            Math.abs(new Date(m.dateEmis).getTime() - new Date(msg.dateEmis).getTime()) < 1000
         );
         if (isDuplicate) return prev;
         return [...prev, msg];
@@ -76,7 +81,7 @@ export default function ChatRoomPage() {
     return () => {
       try {
         leaveRoom(roomId);
-      } catch {}
+      } catch { }
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("pagehide", handleBeforeUnload);
 
@@ -84,7 +89,7 @@ export default function ChatRoomPage() {
       socket.off("chat-joined-room", handleUserJoin);
       socket.off("chat-disconnected", handleUserLeave);
       socket.off("error", handleError);
-      
+
       mountedRef.current = false;
     };
   }, [roomId, pseudo]);
@@ -99,13 +104,13 @@ export default function ChatRoomPage() {
 
   function sendMessage() {
     if (!input.trim() || sendingRef.current) return;
-    
+
     sendingRef.current = true;
     const content = input.trim();
 
     socket.emit("chat-msg", { content, roomName: roomId, pseudo });
     setInput("");
-    
+
     setTimeout(() => {
       sendingRef.current = false;
     }, 500);
@@ -132,7 +137,7 @@ export default function ChatRoomPage() {
             onClick={() => {
               try {
                 leaveRoom(roomId);
-              } catch {}
+              } catch { }
               router.push("/chat/menu");
             }}
             className="btn btn-ghost btn-sm"
@@ -146,7 +151,7 @@ export default function ChatRoomPage() {
         {messages.map((m, idx) => {
           const isMe = m.pseudo === pseudo;
           const isServer = m.pseudo === "SERVER" || m.category === "INFO";
-          
+
           if (isServer) {
             return (
               <div key={idx} className="message-info">
@@ -157,7 +162,7 @@ export default function ChatRoomPage() {
               </div>
             );
           }
-          
+
           return (
             <div key={idx} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
               <div className={`message ${isMe ? 'message-sent' : 'message-received'}`}>
