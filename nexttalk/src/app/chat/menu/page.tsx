@@ -5,6 +5,7 @@ import CreateRoomModal from "../../../components/CreateRoomModal";
 import ProfileModal from "../../../components/ProfileModal";
 import Toast from "../../../components/Toast";
 import { useToast } from "../../../hooks/useToast";
+import socket, { joinRoom, leaveRoom, ChatMessage } from "../../../lib/socket";
 
 type Room = {
   rawKey: string;
@@ -16,6 +17,7 @@ export default function ChatMenuPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [monitoredRooms, setMonitoredRooms] = useState<string[]>([]);
   const router = useRouter();
   const { toasts, removeToast, showError, showSuccess } = useToast();
 
@@ -47,6 +49,24 @@ export default function ChatMenuPage() {
   useEffect(() => {
     loadRooms();
     const interval = setInterval(loadRooms, 5000);
+
+    // Restore monitored rooms from localStorage
+    try {
+      const saved = localStorage.getItem("monitoredRooms");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setMonitoredRooms(parsed);
+          // Re-join rooms logic is handled by the user clicking or explicit join
+          // But since socket state might be fresh, we should re-join them if we have pseudo
+          const p = localStorage.getItem("pseudo");
+          if (p) {
+            parsed.forEach(r => joinRoom(p, r));
+          }
+        }
+      }
+    } catch { }
+
     return () => clearInterval(interval);
   }, []);
 
@@ -83,6 +103,29 @@ export default function ChatMenuPage() {
     }
   }, []);
 
+  // Listen for socket messages for notifications
+  useEffect(() => {
+    const handleMsg = (msg: ChatMessage) => {
+      if (msg.roomName && monitoredRooms.includes(msg.roomName)) {
+        // Ignorer ses propres messages
+        if (msg.pseudo === pseudo) return;
+
+        // Trigger notification
+        if (Notification.permission === "granted") {
+          new Notification(`Nouveau message dans ${msg.roomName}`, {
+            body: `${msg.pseudo}: ${msg.content.startsWith("IMAGE:") ? "Une image" : msg.content}`,
+            icon: "/favicon.ico" // Fallback icon
+          });
+        }
+      }
+    };
+
+    socket.on("chat-msg", handleMsg);
+    return () => {
+      socket.off("chat-msg", handleMsg);
+    };
+  }, [monitoredRooms]); // Re-bind when monitoredRooms changes is okay, or use ref
+
   const pseudo = typeof window !== "undefined" ? localStorage.getItem("pseudo") : null;
   const photo = typeof window !== "undefined" ? localStorage.getItem("photo") : null;
 
@@ -96,6 +139,40 @@ export default function ChatMenuPage() {
     setTimeout(() => {
       openRoom(roomName);
     }, 500);
+  }
+
+  function toggleNotification(e: React.MouseEvent, roomName: string) {
+    e.stopPropagation();
+
+    if (Notification.permission !== "granted") {
+      Notification.requestPermission().then(permission => {
+        if (permission === "granted") {
+          toggleNotificationLogic(roomName);
+        } else {
+          showError("Permission de notification refusée");
+        }
+      });
+    } else {
+      toggleNotificationLogic(roomName);
+    }
+  }
+
+  function toggleNotificationLogic(roomName: string) {
+    setMonitoredRooms(prev => {
+      const isMonitored = prev.includes(roomName);
+      let next;
+      if (isMonitored) {
+        next = prev.filter(r => r !== roomName);
+        leaveRoom(roomName);
+        showSuccess(`Notifications désactivées pour ${roomName}`);
+      } else {
+        next = [...prev, roomName];
+        joinRoom(pseudo || "Invité", roomName);
+        showSuccess(`Notifications activées pour ${roomName}`);
+      }
+      localStorage.setItem("monitoredRooms", JSON.stringify(next));
+      return next;
+    });
   }
 
   return (
@@ -148,19 +225,32 @@ export default function ChatMenuPage() {
                 Aucune room trouvée. Crée-en une !
               </li>
             )}
-            {rooms.map((r) => (
-              <li
-                key={r.rawKey}
-                onClick={() => openRoom(r.name)}
-                className="room-item card-hover"
-              >
-                <div className="room-content">
-                  <div className="room-title">{r.name}</div>
-                  <div className="room-meta">{r.clients} connecté(s)</div>
-                </div>
-                <button className="btn btn-ghost btn-sm">Rejoindre</button>
-              </li>
-            ))}
+            {rooms.map((r) => {
+              const isMonitored = monitoredRooms.includes(r.name);
+              return (
+                <li
+                  key={r.rawKey}
+                  onClick={() => openRoom(r.name)}
+                  className="room-item card-hover"
+                >
+                  <div className="room-content">
+                    <div className="room-title">{r.name}</div>
+                    <div className="room-meta">{r.clients} connecté(s)</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <button
+                      className={`btn btn-sm ${isMonitored ? "btn-primary" : "btn-ghost"}`}
+                      onClick={(e) => toggleNotification(e, r.name)}
+                      title={isMonitored ? "Désactiver les notifications" : "Activer les notifications"}
+                      style={{ fontSize: '1.2rem', padding: '0.2rem 0.6rem' }}
+                    >
+                      {isMonitored ? "🔔" : "🔕"}
+                    </button>
+                    <button className="btn btn-ghost btn-sm">Rejoindre</button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </div>
 
