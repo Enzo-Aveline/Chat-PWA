@@ -48,6 +48,39 @@ export default function ChatMenuPage() {
     return () => clearInterval(interval);
   }, []);
 
+  const [address, setAddress] = useState<string | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && "geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+
+          fetch(`https://api-adresse.data.gouv.fr/reverse/?lon=${lng}&lat=${lat}`)
+            .then((res) => res.json())
+            .then((data) => {
+              if (data && data.features && data.features.length > 0) {
+                setAddress(data.features[0].properties.label);
+              } else {
+                setAddress(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+              }
+            })
+            .catch(() => {
+              setAddress(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+            });
+        },
+        (error) => {
+          console.error("Geoloc error:", error);
+          setLocationError("Loc. indisponible");
+        }
+      );
+    } else {
+      setLocationError("Loc. non supportée");
+    }
+  }, []);
+
   const pseudo = typeof window !== "undefined" ? localStorage.getItem("pseudo") : null;
   const photo = typeof window !== "undefined" ? localStorage.getItem("photo") : null;
 
@@ -79,6 +112,15 @@ export default function ChatMenuPage() {
               <div>
                 <h1 className="title">{pseudo || "Invité"}</h1>
                 <p className="subtitle">Sélectionne une room</p>
+                <div style={{ fontSize: "0.8rem", opacity: 0.7, marginTop: "4px" }}>
+                  {address ? (
+                    <>📍 {address}</>
+                  ) : locationError ? (
+                    <span style={{ color: "#ef4444" }}>{locationError}</span>
+                  ) : (
+                    "📍 Localisation..."
+                  )}
+                </div>
               </div>
             </div>
             <button
