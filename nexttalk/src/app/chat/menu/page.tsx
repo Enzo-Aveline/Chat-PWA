@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import CreateRoomModal from "../../../components/CreateRoomModal";
+import ProfileModal from "../../../components/ProfileModal";
 import Toast from "../../../components/Toast";
 import { useToast } from "../../../hooks/useToast";
 
@@ -14,6 +15,7 @@ type Room = {
 export default function ChatMenuPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const router = useRouter();
   const { toasts, removeToast, showError, showSuccess } = useToast();
 
@@ -100,36 +102,44 @@ export default function ChatMenuPage() {
     <>
       <div className="page">
         <div className="container-sm">
-          <header className="header-content">
-            <div className="header-left">
-              {photo ? (
-                <img src={photo} alt="avatar" className="avatar" />
-              ) : (
-                <div className="avatar avatar-placeholder">
-                  {pseudo?.[0]?.toUpperCase() || "I"}
-                </div>
-              )}
-              <div>
-                <h1 className="title">{pseudo || "Invité"}</h1>
-                <p className="subtitle">Sélectionne une room</p>
-                <div style={{ fontSize: "0.8rem", opacity: 0.7, marginTop: "4px" }}>
-                  {address ? (
-                    <>📍 {address}</>
-                  ) : locationError ? (
-                    <span style={{ color: "#ef4444" }}>{locationError}</span>
-                  ) : (
-                    "📍 Localisation..."
-                  )}
-                </div>
+          <header className="header-content" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h1 className="title">Salons de discussion</h1>
+              <p className="subtitle">Rejoignez une conversation</p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="btn btn-primary"
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                + Créer
+              </button>
+
+              <div
+                onClick={() => setShowProfileModal(true)}
+                style={{ cursor: 'pointer', transition: 'transform 0.2s' }}
+                className="card-hover"
+                title="Mon Profil"
+              >
+                {photo ? (
+                  <img
+                    src={photo}
+                    alt="avatar"
+                    className="avatar"
+                    style={{ width: '40px', height: '40px', margin: 0 }}
+                  />
+                ) : (
+                  <div
+                    className="avatar avatar-placeholder"
+                    style={{ width: '40px', height: '40px', fontSize: '1rem', margin: 0 }}
+                  >
+                    {pseudo?.[0]?.toUpperCase() || "I"}
+                  </div>
+                )}
               </div>
             </div>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="btn btn-primary"
-              style={{ whiteSpace: 'nowrap' }}
-            >
-              + Créer
-            </button>
           </header>
 
           <ul className="room-list">
@@ -159,6 +169,15 @@ export default function ChatMenuPage() {
           onClose={() => setShowCreateModal(false)}
           onRoomCreated={handleRoomCreated}
           onError={showError}
+        />
+
+        <ProfileModal
+          open={showProfileModal}
+          onClose={() => setShowProfileModal(false)}
+          pseudo={pseudo}
+          photo={photo}
+          address={address}
+          locationError={locationError}
         />
       </div>
 
