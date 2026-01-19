@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import socket, { joinRoom, leaveRoom, ChatMessage } from "../../../lib/socket";
+import ChatImage from "../../../components/ChatImage";
 
 export default function ChatRoomPage() {
   const params = useParams();
@@ -116,6 +117,92 @@ export default function ChatRoomPage() {
     }, 500);
   }
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image trop lourde (max 5Mo)");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = reader.result as string;
+
+      // Compress image to ensure it fits in socket message (legacy 1MB limits often apply)
+      const img = new Image();
+      img.src = base64;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 600;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+
+        // Upload sent via API
+        if (!socket.id) {
+          alert("Erreur : vous n'êtes pas connecté.");
+          return;
+        }
+
+        fetch(`https://api.tools.gavago.fr/socketio/api/images/${socket.id}`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            id: socket.id,
+            image_data: compressedBase64,
+          }),
+        })
+          .then((res) => res.json())
+          .then((data) => {
+            if (data.success) {
+              const imgUrl = `https://api.tools.gavago.fr/socketio/api/images/${socket.id}`;
+              socket.emit("chat-msg", {
+                content: imgUrl,
+                roomName: roomId,
+                pseudo,
+              });
+            } else {
+              console.error("Upload failed", data);
+              alert("Erreur lors de l'envoi de l'image : " + (data.message || "Erreur inconnue"));
+            }
+          })
+          .catch((err) => {
+            console.error("Fetch error", err);
+            alert("Erreur réseau lors de l'envoi de l'image");
+          });
+      };
+    };
+    reader.readAsDataURL(file);
+
+    // Reset input
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   return (
     <div className="chat-container">
       <header className="chat-header">
@@ -167,7 +254,13 @@ export default function ChatRoomPage() {
             <div key={idx} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
               <div className={`message ${isMe ? 'message-sent' : 'message-received'}`}>
                 <div className="message-author">{isMe ? "Vous" : m.pseudo}</div>
-                <div>{m.content}</div>
+                {m.content.startsWith("IMAGE:") ? (
+                  <ChatImage src={m.content.slice(6)} />
+                ) : (m.content.includes("/api/images/") || m.content.startsWith("[IMAGE]")) ? (
+                  <ChatImage src={m.content.replace("[IMAGE]", "").trim()} />
+                ) : (
+                  <div>{m.content}</div>
+                )}
                 <div className="message-meta">
                   {new Date(m.dateEmis).toLocaleTimeString()}
                 </div>
@@ -188,6 +281,20 @@ export default function ChatRoomPage() {
             placeholder="Écrire un message..."
             className="input chat-input"
           />
+          <input
+            type="file"
+            accept="image/*"
+            ref={fileInputRef}
+            onChange={handleFileSelect}
+            style={{ display: 'none' }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="btn btn-ghost"
+            title="Envoyer une image"
+          >
+            📎
+          </button>
           <button onClick={sendMessage} className="btn btn-primary">
             Envoyer
           </button>
