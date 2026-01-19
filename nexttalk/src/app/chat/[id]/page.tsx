@@ -151,40 +151,13 @@ export default function ChatRoomPage() {
 
       const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
 
-      // Upload sent via API
-      if (!socket.id) {
-        alert("Erreur : vous n'êtes pas connecté.");
-        return;
-      }
-
-      fetch(`https://api.tools.gavago.fr/socketio/api/images/${socket.id}`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          id: socket.id,
-          image_data: compressedBase64,
-        }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data.success) {
-            const imgUrl = `https://api.tools.gavago.fr/socketio/api/images/${socket.id}`;
-            socket.emit("chat-msg", {
-              content: imgUrl,
-              roomName: roomId,
-              pseudo,
-            });
-          } else {
-            console.error("Upload failed", data);
-            alert("Erreur lors de l'envoi de l'image : " + (data.message || "Erreur inconnue"));
-          }
-        })
-        .catch((err) => {
-          console.error("Fetch error", err);
-          alert("Erreur réseau lors de l'envoi de l'image");
-        });
+      // Directly send image data via socket to ensure persistence (API is ephemeral)
+      // The image is compressed (max 800x600), so it should fit in the socket payload (approx <100KB)
+      socket.emit("chat-msg", {
+        content: `IMAGE:${compressedBase64}`,
+        roomName: roomId,
+        pseudo,
+      });
     };
   };
 
@@ -299,14 +272,14 @@ export default function ChatRoomPage() {
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="btn btn-ghost"
+            className="btn btn-ghost text-xl"
             title="Envoyer une image"
           >
             📎
           </button>
           <button
             onClick={() => setIsCameraOpen(true)}
-            className="btn btn-ghost"
+            className="btn btn-ghost text-xl"
             title="Prendre une photo"
           >
             📷
