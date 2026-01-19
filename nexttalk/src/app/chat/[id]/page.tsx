@@ -121,11 +121,11 @@ export default function ChatRoomPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const processAndSendImage = (base64: string) => {
-    // Compress image to ensure it fits in socket message (legacy 1MB limits often apply)
+  const processAndSendImage = async (base64: string) => {
+    // Compress image first
     const img = new Image();
     img.src = base64;
-    img.onload = () => {
+    img.onload = async () => {
       const canvas = document.createElement('canvas');
       const MAX_WIDTH = 800;
       const MAX_HEIGHT = 600;
@@ -151,13 +151,44 @@ export default function ChatRoomPage() {
 
       const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
 
-      // Directly send image data via socket to ensure persistence (API is ephemeral)
-      // The image is compressed (max 800x600), so it should fit in the socket payload (approx <100KB)
-      socket.emit("chat-msg", {
-        content: `IMAGE:${compressedBase64}`,
-        roomName: roomId,
-        pseudo,
-      });
+      // Use socket.id as required by the API (images are tied to the connected user)
+      // Note: This API seems to only support one current image per connected user.
+      const userId = socket.id;
+
+      if (!userId) {
+        alert("Erreur: Vous n'êtes pas connecté au serveur (Socket ID manquant)");
+        return;
+      }
+
+      try {
+        // Upload to API
+        // According to doc: POST /api/images/:id
+        const response = await fetch(`https://api.tools.gavago.fr/socketio/api/images/${userId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            id: userId,
+            image_data: compressedBase64
+          })
+        });
+
+        if (response.ok) {
+          const imageUrl = `https://api.tools.gavago.fr/socketio/api/images/${userId}`;
+          socket.emit("chat-msg", {
+            content: `[IMAGE] ${imageUrl}`,
+            roomName: roomId,
+            pseudo,
+          });
+        } else {
+          console.error("Failed to upload image", await response.text());
+          alert("Erreur lors de l'envoi de l'image");
+        }
+      } catch (e) {
+        console.error("Error sending image:", e);
+        alert("Erreur lors de l'envoi de l'image");
+      }
     };
   };
 
@@ -236,13 +267,18 @@ export default function ChatRoomPage() {
             <div key={idx} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
               <div className={`message ${isMe ? 'message-sent' : 'message-received'}`}>
                 <div className="message-author">{isMe ? "Vous" : m.pseudo}</div>
-                {m.content.startsWith("IMAGE:") ? (
-                  <ChatImage src={m.content.slice(6)} />
-                ) : (m.content.includes("/api/images/") || m.content.startsWith("[IMAGE]")) ? (
-                  <ChatImage src={m.content.replace("[IMAGE]", "").trim()} />
-                ) : (
-                  <div>{m.content}</div>
-                )}
+                {(() => {
+                  if (m.content.startsWith("IMAGE:")) {
+                    return <ChatImage src={m.content.slice(6)} />;
+                  }
+                  if (m.content.startsWith("[IMAGE]")) {
+                    return <ChatImage src={m.content.replace("[IMAGE]", "").trim()} />;
+                  }
+                  if (m.content.includes("/api/images/")) {
+                    return <ChatImage src={m.content.trim()} />;
+                  }
+                  return <div>{m.content}</div>;
+                })()}
                 <div className="message-meta">
                   {new Date(m.dateEmis).toLocaleTimeString()}
                 </div>
