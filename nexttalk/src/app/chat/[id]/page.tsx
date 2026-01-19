@@ -2,6 +2,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import socket, { joinRoom, leaveRoom, ChatMessage } from "../../../lib/socket";
+import ChatImage from "../../../components/ChatImage";
+import CameraModal from "../../../components/CameraModal";
 
 export default function ChatRoomPage() {
   const params = useParams();
@@ -19,6 +21,7 @@ export default function ChatRoomPage() {
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const listRef = useRef<HTMLDivElement | null>(null);
   const mountedRef = useRef(false);
 
@@ -116,6 +119,103 @@ export default function ChatRoomPage() {
     }, 500);
   }
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const processAndSendImage = async (base64: string) => {
+    // Compress image first
+    const img = new Image();
+    img.src = base64;
+    img.onload = async () => {
+      const canvas = document.createElement('canvas');
+      const MAX_WIDTH = 800;
+      const MAX_HEIGHT = 600;
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > MAX_WIDTH) {
+          height *= MAX_WIDTH / width;
+          width = MAX_WIDTH;
+        }
+      } else {
+        if (height > MAX_HEIGHT) {
+          width *= MAX_HEIGHT / height;
+          height = MAX_HEIGHT;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(img, 0, 0, width, height);
+
+      const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+
+      // Use socket.id as required by the API (images are tied to the connected user)
+      // Note: This API seems to only support one current image per connected user.
+      const userId = socket.id;
+
+      if (!userId) {
+        alert("Erreur: Vous n'êtes pas connecté au serveur (Socket ID manquant)");
+        return;
+      }
+
+      try {
+        // Upload to API
+        // According to doc: POST /api/images/:id
+        const response = await fetch(`https://api.tools.gavago.fr/socketio/api/images/${userId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            id: userId,
+            image_data: compressedBase64
+          })
+        });
+
+        if (response.ok) {
+          const imageUrl = `https://api.tools.gavago.fr/socketio/api/images/${userId}`;
+          socket.emit("chat-msg", {
+            content: `[IMAGE] ${imageUrl}`,
+            roomName: roomId,
+            pseudo,
+          });
+        } else {
+          console.error("Failed to upload image", await response.text());
+          alert("Erreur lors de l'envoi de l'image");
+        }
+      } catch (e) {
+        console.error("Error sending image:", e);
+        alert("Erreur lors de l'envoi de l'image");
+      }
+    };
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      alert("Image trop lourde (max 5Mo)");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const base64 = reader.result as string;
+      processAndSendImage(base64);
+    };
+    reader.readAsDataURL(file);
+
+    // Reset input
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleCameraPhoto = (photoBase64: string) => {
+    processAndSendImage(photoBase64);
+  };
+
   return (
     <div className="chat-container">
       <header className="chat-header">
@@ -167,7 +267,18 @@ export default function ChatRoomPage() {
             <div key={idx} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
               <div className={`message ${isMe ? 'message-sent' : 'message-received'}`}>
                 <div className="message-author">{isMe ? "Vous" : m.pseudo}</div>
-                <div>{m.content}</div>
+                {(() => {
+                  if (m.content.startsWith("IMAGE:")) {
+                    return <ChatImage src={m.content.slice(6)} />;
+                  }
+                  if (m.content.startsWith("[IMAGE]")) {
+                    return <ChatImage src={m.content.replace("[IMAGE]", "").trim()} />;
+                  }
+                  if (m.content.includes("/api/images/")) {
+                    return <ChatImage src={m.content.trim()} />;
+                  }
+                  return <div>{m.content}</div>;
+                })()}
                 <div className="message-meta">
                   {new Date(m.dateEmis).toLocaleTimeString()}
                 </div>
@@ -188,11 +299,38 @@ export default function ChatRoomPage() {
             placeholder="Écrire un message..."
             className="input chat-input"
           />
+          <input
+            type="file"
+            accept="image/*"
+            ref={fileInputRef}
+            onChange={handleFileSelect}
+            style={{ display: 'none' }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="btn btn-ghost text-xl"
+            title="Envoyer une image"
+          >
+            📎
+          </button>
+          <button
+            onClick={() => setIsCameraOpen(true)}
+            className="btn btn-ghost text-xl"
+            title="Prendre une photo"
+          >
+            📷
+          </button>
           <button onClick={sendMessage} className="btn btn-primary">
             Envoyer
           </button>
         </div>
       </footer>
+
+      <CameraModal
+        open={isCameraOpen}
+        onClose={() => setIsCameraOpen(false)}
+        onPhoto={handleCameraPhoto}
+      />
     </div>
   );
 }

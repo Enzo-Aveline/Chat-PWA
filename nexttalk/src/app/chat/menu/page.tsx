@@ -2,8 +2,10 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import CreateRoomModal from "../../../components/CreateRoomModal";
+import ProfileModal from "../../../components/ProfileModal";
 import Toast from "../../../components/Toast";
 import { useToast } from "../../../hooks/useToast";
+import socket, { joinRoom, leaveRoom, ChatMessage } from "../../../lib/socket";
 
 type Room = {
   rawKey: string;
@@ -14,6 +16,8 @@ type Room = {
 export default function ChatMenuPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [monitoredRooms, setMonitoredRooms] = useState<string[]>([]);
   const router = useRouter();
   const { toasts, removeToast, showError, showSuccess } = useToast();
 
@@ -45,8 +49,82 @@ export default function ChatMenuPage() {
   useEffect(() => {
     loadRooms();
     const interval = setInterval(loadRooms, 5000);
+
+    // Restore monitored rooms from localStorage
+    try {
+      const saved = localStorage.getItem("monitoredRooms");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setMonitoredRooms(parsed);
+          // Re-join rooms logic is handled by the user clicking or explicit join
+          // But since socket state might be fresh, we should re-join them if we have pseudo
+          const p = localStorage.getItem("pseudo");
+          if (p) {
+            parsed.forEach(r => joinRoom(p, r));
+          }
+        }
+      }
+    } catch { }
+
     return () => clearInterval(interval);
   }, []);
+
+  const [address, setAddress] = useState<string | null>(null);
+  const [locationError, setLocationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && "geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+
+          fetch(`https://api-adresse.data.gouv.fr/reverse/?lon=${lng}&lat=${lat}`)
+            .then((res) => res.json())
+            .then((data) => {
+              if (data && data.features && data.features.length > 0) {
+                setAddress(data.features[0].properties.label);
+              } else {
+                setAddress(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+              }
+            })
+            .catch(() => {
+              setAddress(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+            });
+        },
+        (error) => {
+          console.error("Geoloc error:", error);
+          setLocationError("Loc. indisponible");
+        }
+      );
+    } else {
+      setLocationError("Loc. non supportée");
+    }
+  }, []);
+
+  // Listen for socket messages for notifications
+  useEffect(() => {
+    const handleMsg = (msg: ChatMessage) => {
+      if (msg.roomName && monitoredRooms.includes(msg.roomName)) {
+        // Ignorer ses propres messages
+        if (msg.pseudo === pseudo) return;
+
+        // Trigger notification
+        if (Notification.permission === "granted") {
+          new Notification(`Nouveau message dans ${msg.roomName}`, {
+            body: `${msg.pseudo}: ${msg.content.startsWith("IMAGE:") ? "Une image" : msg.content}`,
+            icon: "/favicon.ico" // Fallback icon
+          });
+        }
+      }
+    };
+
+    socket.on("chat-msg", handleMsg);
+    return () => {
+      socket.off("chat-msg", handleMsg);
+    };
+  }, [monitoredRooms]); // Re-bind when monitoredRooms changes is okay, or use ref
 
   const pseudo = typeof window !== "undefined" ? localStorage.getItem("pseudo") : null;
   const photo = typeof window !== "undefined" ? localStorage.getItem("photo") : null;
@@ -63,31 +141,82 @@ export default function ChatMenuPage() {
     }, 500);
   }
 
+  function toggleNotification(e: React.MouseEvent, roomName: string) {
+    e.stopPropagation();
+
+    if (Notification.permission !== "granted") {
+      Notification.requestPermission().then(permission => {
+        if (permission === "granted") {
+          toggleNotificationLogic(roomName);
+        } else {
+          showError("Permission de notification refusée");
+        }
+      });
+    } else {
+      toggleNotificationLogic(roomName);
+    }
+  }
+
+  function toggleNotificationLogic(roomName: string) {
+    setMonitoredRooms(prev => {
+      const isMonitored = prev.includes(roomName);
+      let next;
+      if (isMonitored) {
+        next = prev.filter(r => r !== roomName);
+        leaveRoom(roomName);
+        showSuccess(`Notifications désactivées pour ${roomName}`);
+      } else {
+        next = [...prev, roomName];
+        joinRoom(pseudo || "Invité", roomName);
+        showSuccess(`Notifications activées pour ${roomName}`);
+      }
+      localStorage.setItem("monitoredRooms", JSON.stringify(next));
+      return next;
+    });
+  }
+
   return (
     <>
       <div className="page">
         <div className="container-sm">
-          <header className="header-content">
-            <div className="header-left">
-              {photo ? (
-                <img src={photo} alt="avatar" className="avatar" />
-              ) : (
-                <div className="avatar avatar-placeholder">
-                  {pseudo?.[0]?.toUpperCase() || "I"}
-                </div>
-              )}
-              <div>
-                <h1 className="title">{pseudo || "Invité"}</h1>
-                <p className="subtitle">Sélectionne une room</p>
+          <header className="header-content" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <h1 className="title">Salons de discussion</h1>
+              <p className="subtitle">Rejoignez une conversation</p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="btn btn-primary"
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                + Créer
+              </button>
+
+              <div
+                onClick={() => setShowProfileModal(true)}
+                style={{ cursor: 'pointer', transition: 'transform 0.2s' }}
+                className="card-hover"
+                title="Mon Profil"
+              >
+                {photo ? (
+                  <img
+                    src={photo}
+                    alt="avatar"
+                    className="avatar"
+                    style={{ width: '40px', height: '40px', margin: 0 }}
+                  />
+                ) : (
+                  <div
+                    className="avatar avatar-placeholder"
+                    style={{ width: '40px', height: '40px', fontSize: '1rem', margin: 0 }}
+                  >
+                    {pseudo?.[0]?.toUpperCase() || "I"}
+                  </div>
+                )}
               </div>
             </div>
-            <button
-              onClick={() => setShowCreateModal(true)}
-              className="btn btn-primary"
-              style={{ whiteSpace: 'nowrap' }}
-            >
-              + Créer
-            </button>
           </header>
 
           <ul className="room-list">
@@ -96,19 +225,32 @@ export default function ChatMenuPage() {
                 Aucune room trouvée. Crée-en une !
               </li>
             )}
-            {rooms.map((r) => (
-              <li
-                key={r.rawKey}
-                onClick={() => openRoom(r.name)}
-                className="room-item card-hover"
-              >
-                <div className="room-content">
-                  <div className="room-title">{r.name}</div>
-                  <div className="room-meta">{r.clients} connecté(s)</div>
-                </div>
-                <button className="btn btn-ghost btn-sm">Rejoindre</button>
-              </li>
-            ))}
+            {rooms.map((r) => {
+              const isMonitored = monitoredRooms.includes(r.name);
+              return (
+                <li
+                  key={r.rawKey}
+                  onClick={() => openRoom(r.name)}
+                  className="room-item card-hover"
+                >
+                  <div className="room-content">
+                    <div className="room-title">{r.name}</div>
+                    <div className="room-meta">{r.clients} connecté(s)</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <button
+                      className={`btn btn-sm ${isMonitored ? "btn-primary" : "btn-ghost"}`}
+                      onClick={(e) => toggleNotification(e, r.name)}
+                      title={isMonitored ? "Désactiver les notifications" : "Activer les notifications"}
+                      style={{ fontSize: '1.2rem', padding: '0.2rem 0.6rem' }}
+                    >
+                      {isMonitored ? "🔔" : "🔕"}
+                    </button>
+                    <button className="btn btn-ghost btn-sm">Rejoindre</button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </div>
 
@@ -117,6 +259,15 @@ export default function ChatMenuPage() {
           onClose={() => setShowCreateModal(false)}
           onRoomCreated={handleRoomCreated}
           onError={showError}
+        />
+
+        <ProfileModal
+          open={showProfileModal}
+          onClose={() => setShowProfileModal(false)}
+          pseudo={pseudo}
+          photo={photo}
+          address={address}
+          locationError={locationError}
         />
       </div>
 
