@@ -22,7 +22,7 @@ jobs:
         port: 22
         script: |
           # Aller dans le dossier du projet
-          cd /var/Chat-PWA/nexttalk
+          cd /var/www/Chat-PWA/nexttalk
           
           echo "📥 Git pull..."
           git pull origin main
