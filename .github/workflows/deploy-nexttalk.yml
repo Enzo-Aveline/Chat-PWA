@@ -38,15 +38,9 @@ jobs:
           PORT=3001
           ENVEOF
           fi
-          
-          echo "🧹 Nettoyage des anciens fichiers de build..."
-          rm -rf .next
-          rm -rf public/sw.js
-          rm -rf public/workbox-*
-          
+
           echo "🔨 Build du projet (Optimisé Low RAM)..."
-          export NODE_OPTIONS="--max-old-space-size=2048"
-          npm run build -- --no-lint --no-check
+          npm run build
           
           echo "🔄 Redémarrage de l'application..."
           pm2 restart nexttalk || pm2 start ../ecosystem.config.js
