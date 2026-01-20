@@ -39,6 +39,11 @@ jobs:
           ENVEOF
           fi
           
+          echo "🧹 Nettoyage des anciens fichiers de build..."
+          rm -rf .next
+          rm -rf public/sw.js
+          rm -rf public/workbox-*
+
           echo "🔨 Build du projet..."
           npm run build
           
