@@ -171,7 +171,8 @@ export default function ChatRoomPage() {
       try {
         // Upload to API
         // According to doc: POST /api/images/:id
-        const response = await fetch(`https://api.tools.gavago.fr/socketio/api/images/${userId}`, {
+        const encodedId = encodeURIComponent(userId);
+        const response = await fetch(`https://api.tools.gavago.fr/socketio/api/images/${encodedId}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -183,7 +184,7 @@ export default function ChatRoomPage() {
         });
 
         if (response.ok) {
-          const imageUrl = `https://api.tools.gavago.fr/socketio/api/images/${userId}`;
+          const imageUrl = `https://api.tools.gavago.fr/socketio/api/images/${encodedId}`;
           socket.emit("chat-msg", {
             content: `[IMAGE] ${imageUrl}`,
             roomName: roomId,
@@ -260,6 +261,34 @@ export default function ChatRoomPage() {
           const isMe = m.pseudo === pseudo;
           const isServer = m.pseudo === "SERVER" || m.category === "INFO";
 
+          // Special handling for server image notifications
+          const lowerContent = m.content.toLowerCase().trim();
+          if (lowerContent.startsWith("nouvelle image pour le user")) {
+            const parts = m.content.trim().split(" ");
+            let potentialId = parts[parts.length - 1];
+            // Remove trailing dot if present
+            if (potentialId.endsWith('.')) {
+              potentialId = potentialId.slice(0, -1);
+            }
+
+            if (potentialId) {
+              // Prevent double display for own images (handled by standard flow)
+              if (potentialId === pseudo) return null;
+
+              return (
+                <div key={idx} style={{ display: 'flex', justifyContent: 'flex-start' }}>
+                  <div className="message message-received">
+                    <div className="message-author">{potentialId}</div>
+                    <ChatImage pseudo={potentialId} />
+                    <div className="message-meta">
+                      {new Date(m.dateEmis).toLocaleTimeString()}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+          }
+
           if (isServer) {
             return (
               <div key={idx} className="message-info">
@@ -276,6 +305,9 @@ export default function ChatRoomPage() {
               <div className={`message ${isMe ? 'message-sent' : 'message-received'}`}>
                 <div className="message-author">{isMe ? "Vous" : m.pseudo}</div>
                 {(() => {
+                  // Debug log
+                  console.log("Message content:", m.content);
+
                   if (m.content.startsWith("IMAGE:")) {
                     return <ChatImage src={m.content.slice(6)} />;
                   }
@@ -285,6 +317,7 @@ export default function ChatRoomPage() {
                   if (m.content.includes("/api/images/")) {
                     return <ChatImage src={m.content.trim()} />;
                   }
+
                   return <div>{m.content}</div>;
                 })()}
                 <div className="message-meta">

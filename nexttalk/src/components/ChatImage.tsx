@@ -3,55 +3,111 @@
 import React, { useEffect, useState } from "react";
 
 interface ChatImageProps {
-    src: string;
+    src?: string;
+    pseudo?: string;
 }
 
-export default function ChatImage({ src }: ChatImageProps) {
+export default function ChatImage({ src, pseudo }: ChatImageProps) {
     const [imgSrc, setImgSrc] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
+        let isMounted = true;
+        const fetchImage = async (url: string) => {
+            // Add cache buster
+            const fetchUrl = url.includes('?') ? `${url}&t=${Date.now()}` : `${url}?t=${Date.now()}`;
+            console.log("[ChatImage] Fetching:", fetchUrl);
+
+            try {
+                const res = await fetch(fetchUrl, {
+                    headers: { "Content-Type": "application/json" },
+                });
+                if (!res.ok) throw new Error("Network response was not ok");
+                const data = await res.json();
+
+                if (isMounted) {
+                    const content = data.data_image || data.data;
+                    if (data.success && content) {
+                        setImgSrc(content);
+                    } else {
+                        console.log("[ChatImage] Unavailable:", data.message);
+                        setError(data.message || "Image indisponible");
+                    }
+                }
+            } catch (err) {
+                if (isMounted) {
+                    console.error("[ChatImage] Error:", err);
+                    setError("Erreur de chargement");
+                }
+            } finally {
+                if (isMounted) setLoading(false);
+            }
+        };
+
+        const resolvePseudo = async () => {
+            if (!pseudo) return;
+            setLoading(true);
+            setError(null);
+
+            try {
+                const res = await fetch('https://api.tools.gavago.fr/socketio/api/rooms');
+                const data = await res.json();
+
+                let foundSocketId: string | null = null;
+                if (data.success && data.data) {
+                    for (const roomName in data.data) {
+                        const clients = data.data[roomName].clients;
+                        for (const socketId in clients) {
+                            if (clients[socketId].pseudo === pseudo) {
+                                foundSocketId = socketId;
+                                break;
+                            }
+                        }
+                        if (foundSocketId) break;
+                    }
+                }
+
+                if (foundSocketId && isMounted) {
+                    const url = `https://api.tools.gavago.fr/socketio/api/images/${encodeURIComponent(foundSocketId)}`;
+                    fetchImage(url);
+                } else if (isMounted) {
+                    setError(`Utilisateur ${pseudo} introuvable ou déconnecté`);
+                    setLoading(false);
+                }
+            } catch (err) {
+                if (isMounted) {
+                    console.error("[ChatImage] Resolve Error:", err);
+                    setError("Erreur lors de la recherche de l'utilisateur");
+                    setLoading(false);
+                }
+            }
+        };
+
+        if (pseudo) {
+            resolvePseudo();
+            return () => { isMounted = false; };
+        }
+
         if (!src) return;
 
-        // If it's already a data URL (my implementation), use it directly
+        // Existing Src Logic
         if (src.startsWith("data:")) {
             setImgSrc(src);
             return;
         }
 
-        // If it's an API URL, fetch the JSON wrapper
         if (src.includes("/api/images/")) {
             setLoading(true);
             setError(null);
-            fetch(src)
-                .then(res => {
-                    if (!res.ok) throw new Error("Network response was not ok");
-                    return res.json();
-                })
-                .then(data => {
-                    // The API returns { data_image: "base64..." } or maybe { data: ... }
-                    const content = data.data_image || data.data;
-                    if (data.success && content) {
-                        setImgSrc(content);
-                    } else {
-                        // API explicitly returned failure (e.g. user offline)
-                        console.log("[ChatImage] Unavailable:", data.message || "Unknown error");
-                        setError(data.message || "Image indisponible");
-                    }
-                })
-                .catch(err => {
-                    console.error("[ChatImage] Error:", err);
-                    setError("Erreur de chargement");
-                })
-                .finally(() => setLoading(false));
-            return;
+            fetchImage(src);
+            return () => { isMounted = false; };
         }
 
-        // Fallback for standard standard URLs
         setImgSrc(src);
+        return () => { isMounted = false; };
 
-    }, [src]);
+    }, [src, pseudo]);
 
     if (loading) {
         return <div className="animate-pulse bg-gray-200 h-48 w-48 rounded flex items-center justify-center p-4">Chargement...</div>;
