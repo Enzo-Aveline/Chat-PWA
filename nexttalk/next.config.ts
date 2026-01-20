@@ -6,11 +6,12 @@ const withPWA = require("next-pwa")({
   register: true,
   skipWaiting: true,
 });
+module.exports = withPWA({
+  /* next config */
+});
 
 const nextConfig: NextConfig = {
-  // output: "standalone", // Désactivé pour simplifier le build et éviter les problèmes de paths statiques
-  // Autres configs next si besoin
+  output: "standalone", // ⬅️ Ajoutez ceci pour optimiser le déploiement
 };
 
-// On exporte la configuration "enveloppée" par withPWA
-export default withPWA(nextConfig);
+export default nextConfig;
