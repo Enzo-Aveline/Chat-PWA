@@ -8,7 +8,7 @@ const withPWA = require("next-pwa")({
 });
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // output: "standalone", // Désactivé pour simplifier le build et éviter les problèmes de paths statiques
   // Autres configs next si besoin
 };
 
