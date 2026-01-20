@@ -3,7 +3,7 @@ module.exports = {
     name: 'nexttalk',
     script: 'npm',
     args: 'start',
-    cwd: '/var/Chat-PWA/nexttalk',
+    cwd: '/var/www/Chat-PWA/nexttalk',
     instances: 1,
     exec_mode: 'fork',
     autorestart: true,
@@ -13,8 +13,7 @@ module.exports = {
       NODE_ENV: 'production',
       PORT: 3001
     },
-    error_file: '/var/log/nexttalk/error.log',
-    out_file: '/var/log/nexttalk/out.log',
+    // Log paths removed to use default ~/.pm2/logs/ to avoid permission errors
     time: true
   }]
 };
