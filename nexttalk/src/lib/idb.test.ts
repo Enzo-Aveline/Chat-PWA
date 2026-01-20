@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { saveProfile, getProfile, saveConversation, getConversation, getAllConversations, Message, Conversation, closeDBConnection } from './idb';
+import { saveProfile, getProfile, saveConversation, getConversation, getAllConversations, Conversation, closeDBConnection } from './idb';
 import 'fake-indexeddb/auto';
 import { openDB, deleteDB } from 'idb';
 

@@ -1,7 +1,7 @@
 "use client";
 import React, { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import socket, { joinRoom, disconnectSocket, ChatMessage } from "../../../lib/socket";
+import socket, { joinRoom, leaveRoom, disconnectSocket, ChatMessage } from "../../../lib/socket";
 import ChatImage from "../../../components/ChatImage";
 import CameraModal from "../../../components/CameraModal";
 
@@ -93,7 +93,7 @@ export default function ChatRoomPage() {
 
     return () => {
       try {
-        disconnectSocket();
+        leaveRoom(roomId);
       } catch { }
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("pagehide", handleBeforeUnload);
@@ -246,9 +246,6 @@ export default function ChatRoomPage() {
           </div>
           <button
             onClick={() => {
-              try {
-                disconnectSocket();
-              } catch { }
               router.push("/chat/menu");
             }}
             className="btn btn-ghost btn-sm"
