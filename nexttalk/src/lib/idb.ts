@@ -1,24 +1,16 @@
 import { openDB, IDBPDatabase } from 'idb';
+import { ChatMessage } from './socket';
 
 const DB_NAME = 'nexttalk-db';
-const DB_VERSION = 2;
+const DB_VERSION = 2; // Incremented version not strictly needed if schema is compatible, but good practice if changing types significantly. However, since we write full objects, let's keep it simple.
 
-export interface Message {
-  from: "bot" | "user";
-  text: string;         // si c’est une image, on met l’URL/base64
-  date: Date | string;
-  // "system" pour join/leave notifications
-  type: "text" | "image" | "system";
-  serverId?: string;    // id fourni par le serveur (pour dédup)
-  localId?: string;     // id local temporaire (optimistic)
-  pending?: boolean;    // true tant que la confirmation serveur n'est pas reçue
-  senderName?: string;   // nom affiché de l'émetteur (client ou distant)
-}
+// Re-export specific types if needed, or just use ChatMessage
+export type { ChatMessage };
 
 export interface Conversation {
   id: string;
   name: string;
-  messages: Message[];
+  messages: ChatMessage[];
 }
 
 export interface Profile {
@@ -87,31 +79,25 @@ export async function getConversation(id: string): Promise<Conversation | null> 
 }
 
 export async function getAllConversations(): Promise<Conversation[]> {
+  const db = await initDB();
+  
   try {
     const res = await fetch("https://api.tools.gavago.fr/socketio/api/rooms");
     console.debug("[rooms] fetch status", res.status, res.statusText);
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "<no body>");
-      console.warn("[rooms] bad response body:", text);
-      throw new Error("API non OK");
+       // fallback if API fails
+       throw new Error("API non OK");
     }
 
-    // try to parse JSON safely (some responses may not be strict)
+    // try to parse JSON safely
     let body: any;
     try {
       body = await res.json();
     } catch (e) {
-      // response not JSON — try as text then attempt to extract JSON array
+      // fallback parsing
       const txt = await res.text().catch(() => "");
-      console.warn("[rooms] response not JSON, raw text:", txt);
-      // try to parse text directly
-      try {
-        body = JSON.parse(txt);
-      } catch {
-        // leave as string
-        body = txt;
-      }
+      try { body = JSON.parse(txt); } catch { body = txt; }
     }
 
     // Normalize rooms into string[]
@@ -119,68 +105,62 @@ export async function getAllConversations(): Promise<Conversation[]> {
     if (Array.isArray(body)) {
       rooms = body;
     } else if (body && typeof body.data === "object" && !Array.isArray(body.data)) {
-      // Newer API shape: data is an object with roomName keys
       rooms = Object.keys(body.data);
     } else if (body && typeof body.data === "string") {
-      // API historically returned { data: '["room1","room2"]' }
       try {
         const parsed = JSON.parse(body.data);
-        if (Array.isArray(parsed)) rooms = parsed;
+         if (Array.isArray(parsed)) rooms = parsed;
       } catch {
-        const match = (body.data as string).match(/\[.*\]/);
-        if (match) {
-          try {
-            const parsed = JSON.parse(match[0]);
-            if (Array.isArray(parsed)) rooms = parsed;
-          } catch (e) {
-            console.warn("[rooms] can't parse body.data as JSON array", e);
-          }
-        }
+         // simplistic fallback
+         const match = (body.data as string).match(/\[.*\]/);
+         if (match) {
+            try { if (Array.isArray(JSON.parse(match[0]))) rooms = JSON.parse(match[0]); } catch {}
+         }
       }
     } else if (typeof body === "string") {
-      // body might be a JSON array string
-      try {
-        const parsed = JSON.parse(body);
-        if (Array.isArray(parsed)) rooms = parsed;
-      } catch {
-        console.warn("[rooms] body is string but not JSON array");
-      }
-    } else {
-      console.warn("[rooms] unexpected body shape", body);
+       try { if (Array.isArray(JSON.parse(body))) rooms = JSON.parse(body); } catch {}
     }
 
     // ensure only string ids
     rooms = rooms.filter(r => typeof r === "string");
 
-    const conversations: Conversation[] = rooms.map((room) => ({
-      id: room,
-      name: room,
-      messages: []
-    }));
-
-    // persist to IDB respecting store keyPath configuration
-    const db = await initDB();
+    // Fetch ALL existing conversations first to preserve messages
     const tx = db.transaction('conversations', 'readwrite');
     const store = tx.store;
     const usesInlineKey = store.keyPath != null;
-    for (const conv of conversations) {
-      if (usesInlineKey) {
-        await db.put("conversations", conv);
+
+    const existingConvs: Conversation[] = [];
+    let cursor = await store.openCursor();
+    while (cursor) {
+      existingConvs.push(cursor.value);
+      cursor = await cursor.continue();
+    }
+
+    const mergedConversations: Conversation[] = [];
+
+    for (const roomName of rooms) {
+      const existing = existingConvs.find(c => c.id === roomName);
+      const conv: Conversation = existing 
+        ? existing 
+        : { id: roomName, name: roomName, messages: [] };
+      
+      mergedConversations.push(conv);
+
+       // Update or add to DB
+       if (usesInlineKey) {
+        await store.put(conv);
       } else {
-        await db.put("conversations", conv, conv.id);
+        await store.put(conv, conv.id);
       }
     }
+    
     await tx.done;
 
-    // fallback: if API returned empty list, return a default room
-    if (conversations.length === 0) {
-      return [{ id: "general", name: "general", messages: [] }];
-    }
-    return conversations;
+    return mergedConversations;
+
   } catch (err) {
     console.error("⚠️ getAllConversations failed:", err);
-    // fallback IDB
-    const db = await initDB();
+    // fallback: return only what's in IDB
     const all: Conversation[] = [];
     let cursor = await db.transaction("conversations").store.openCursor();
     while (cursor) {

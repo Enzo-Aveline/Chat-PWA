@@ -76,6 +76,7 @@ export function disconnectSocket() {
   console.log("[Socket] Disconnecting");
   joinedRooms.clear();
   socket.disconnect();
+  connectPromise = null;
 }
 
 export default socket;
