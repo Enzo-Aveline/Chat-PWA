@@ -46,6 +46,14 @@ export default function ChatRoomPage() {
         return;
       }
 
+      // Vibrate on incoming message
+      if (msg.pseudo !== pseudo) {
+        if (typeof navigator !== "undefined" && navigator.vibrate) {
+          console.log("Vibrate");
+          navigator.vibrate(200);
+        }
+      }
+
       setMessages((prev) => {
         // Avoid duplicate messages with same content and timestamp
         const isDuplicate = prev.some(
