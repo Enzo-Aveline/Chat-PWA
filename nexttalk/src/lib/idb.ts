@@ -1,7 +1,7 @@
-import { openDB } from 'idb';
+import { openDB, IDBPDatabase } from 'idb';
 
 const DB_NAME = 'nexttalk-db';
-const DB_VERSION = 2; // ⬅️ incrémenter la version pour forcer l'upgrade
+const DB_VERSION = 2;
 
 export interface Message {
   from: "bot" | "user";
@@ -27,18 +27,31 @@ export interface Profile {
   dirty: boolean;
 }
 
-const initDB = async () => {
-  return openDB(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains('profile')) {
-        db.createObjectStore('profile');
-      }
-      if (!db.objectStoreNames.contains('conversations')) {
-        db.createObjectStore('conversations');
-      }
-    },
-  });
+let dbPromise: Promise<IDBPDatabase> | null = null;
+
+const initDB = () => {
+  if (!dbPromise) {
+    dbPromise = openDB(DB_NAME, DB_VERSION, {
+      upgrade(db) {
+        if (!db.objectStoreNames.contains('profile')) {
+          db.createObjectStore('profile');
+        }
+        if (!db.objectStoreNames.contains('conversations')) {
+          db.createObjectStore('conversations');
+        }
+      },
+    });
+  }
+  return dbPromise;
 };
+
+export async function closeDBConnection() {
+  if (dbPromise) {
+    const db = await dbPromise;
+    db.close();
+    dbPromise = null;
+  }
+}
 
 export async function saveProfile(profile: Profile): Promise<void> {
   const db = await initDB();
