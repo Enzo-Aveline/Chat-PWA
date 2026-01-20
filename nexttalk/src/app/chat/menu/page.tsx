@@ -74,15 +74,19 @@ export default function ChatMenuPage() {
   const [locationError, setLocationError] = useState<string | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
+
     if (typeof window !== "undefined" && "geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          if (!isMounted) return;
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
 
           fetch(`https://api-adresse.data.gouv.fr/reverse/?lon=${lng}&lat=${lat}`)
             .then((res) => res.json())
             .then((data) => {
+              if (!isMounted) return;
               if (data && data.features && data.features.length > 0) {
                 setAddress(data.features[0].properties.label);
               } else {
@@ -90,17 +94,29 @@ export default function ChatMenuPage() {
               }
             })
             .catch(() => {
+              if (!isMounted) return;
               setAddress(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
             });
         },
         (error) => {
-          console.error("Geoloc error:", error);
+          if (!isMounted) return;
+          console.error("Geoloc error details:", {
+            code: error.code,
+            message: error.message,
+            PERMISSION_DENIED: error.PERMISSION_DENIED,
+            POSITION_UNAVAILABLE: error.POSITION_UNAVAILABLE,
+            TIMEOUT: error.TIMEOUT
+          });
           setLocationError("Loc. indisponible");
         }
       );
     } else {
       setLocationError("Loc. non supportée");
     }
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Listen for socket messages for notifications
