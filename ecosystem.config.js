@@ -11,7 +11,7 @@ module.exports = {
     max_memory_restart: '500M',
     env: {
       NODE_ENV: 'production',
-      PORT: 3000
+      PORT: 8080
     },
     error_file: '/var/log/nexttalk/error.log',
     out_file: '/var/log/nexttalk/out.log',
