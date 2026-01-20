@@ -126,12 +126,26 @@ export default function ChatMenuPage() {
         // Ignorer ses propres messages
         if (msg.pseudo === pseudo) return;
 
+        // Check if message is recent (less than 2 seconds old relative to receiving time)
+        // This prevents notifications for history messages sent upon joining a room
+        const msgTime = new Date(msg.dateEmis).getTime();
+        const now = Date.now();
+        // Allow a small grace period (e.g. 5 secons) for network latency, but filter out history
+        if (now - msgTime > 5000) {
+          return;
+        }
+
         // Trigger notification
         if (Notification.permission === "granted") {
           new Notification(`Nouveau message dans ${msg.roomName}`, {
             body: `${msg.pseudo}: ${msg.content.startsWith("IMAGE:") ? "Une image" : msg.content}`,
             icon: "/favicon.ico" // Fallback icon
           });
+        }
+
+        // Vibrate
+        if (typeof navigator !== "undefined" && navigator.vibrate) {
+          navigator.vibrate(200);
         }
       }
     };
