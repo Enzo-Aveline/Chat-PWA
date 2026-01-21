@@ -69,7 +69,7 @@ NextTalk est une application de messagerie moderne et performante construite ave
     ```bash
     npm run dev
     ```
-    L'application sera accessible sur `http://localhost:3000`.
+    L'application sera accessible sur `http://localhost:3001`.
 
 
 
@@ -96,7 +96,7 @@ Pour afficher le rapport visuel des derniers tests exécutés :
 ```bash
 npx playwright show-report
 ```
-*Note : Assurez-vous que le serveur de développement ne tourne pas déjà sur le port 3000, ou laissez Playwright le lancer automatiquement.*
+*Note : Assurez-vous que le serveur de développement ne tourne pas déjà sur le port 3001, ou laissez Playwright le lancer automatiquement.*
 
 ### CI/CD
 

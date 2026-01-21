@@ -1,0 +1,12 @@
+services:
+  nexttalk:
+    build: .
+    container_name: nexttalk
+    restart: always
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env.local
+      - .env
+    environment:
+      - NODE_ENV=production
