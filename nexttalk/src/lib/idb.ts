@@ -2,7 +2,7 @@ import { openDB, IDBPDatabase } from 'idb';
 import { ChatMessage } from './socket';
 
 const DB_NAME = 'nexttalk-db';
-const DB_VERSION = 2; // Incrémenté si changement de structure, bonne pratique pour les upgrades de schéma.
+const DB_VERSION = 3; // Incrémenté si changement de structure, bonne pratique pour les upgrades de schéma.
 
 // Re-export specific types if needed, or just use ChatMessage
 export type { ChatMessage };
@@ -40,7 +40,11 @@ const initDB = () => {
           db.createObjectStore('profile');
         }
         if (!db.objectStoreNames.contains('conversations')) {
-          db.createObjectStore('conversations');
+          db.createObjectStore('conversations', { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains('pending-messages')) {
+            // On utilise dateEmis comme clé unique pour les messages en attente
+            db.createObjectStore('pending-messages', { keyPath: 'dateEmis' });
         }
       },
     });
@@ -217,4 +221,73 @@ export async function getAllConversations(): Promise<Conversation[]> {
 export async function deleteConversation(id: string): Promise<void> {
   const db = await initDB();
   await db.delete('conversations', id);
+}
+
+// --- Pending Messages (Offline) ---
+
+/**
+ * Sauvegarde un message en attente d'envoi.
+ */
+export async function savePendingMessage(roomName: string, msg: ChatMessage): Promise<void> {
+  const db = await initDB();
+  // On stocke l'objet { ...msg, roomName } pour savoir où l'envoyer
+  // On utilise un store 'pending-messages'
+  if (!db.objectStoreNames.contains('pending-messages')) return;
+  
+  await db.add('pending-messages', { ...msg, roomName });
+}
+
+/**
+ * Récupère tous les messages en attente.
+ */
+export async function getPendingMessages(): Promise<ChatMessage[]> {
+  const db = await initDB();
+  if (!db.objectStoreNames.contains('pending-messages')) return [];
+  return db.getAll('pending-messages');
+}
+
+/**
+ * Supprime un message en attente (après envoi réussi).
+ * On suppose qu'on utilise un ID ou la date comme clé.
+ * Ici on va utiliser l'ID généré ou dateEmis si pas d'ID.
+ */
+export async function deletePendingMessage(key: string): Promise<void> {
+  const db = await initDB();
+  if (!db.objectStoreNames.contains('pending-messages')) return;
+  await db.delete('pending-messages', key);
+}
+
+/**
+ * Helper: Ajoute un message à l'historique d'une conversation existante ou nouvelle.
+ */
+export async function addMessageToConversation(roomName: string, msg: ChatMessage): Promise<void> {
+  const db = await initDB();
+  const tx = db.transaction('conversations', 'readwrite');
+  const store = tx.store;
+  
+  const existing = await store.get(roomName);
+  const conv: Conversation = existing || { id: roomName, name: roomName, messages: [] };
+  
+  // Avoid duplicates or update existing by ID
+  const existingIndex = msg.id 
+    ? conv.messages.findIndex(m => m.id === msg.id)
+    : -1;
+
+  if (existingIndex !== -1) {
+    // Update existing message (e.g. status, date from server)
+    conv.messages[existingIndex] = msg;
+    await store.put(conv);
+  } else {
+    // Fallback: check duplicates by content+date (loose check?) 
+    // Actually exact match is safer for now to avoid false positives, but for offline sync
+    // we rely on ID. If no ID, we might store duplicate if date changed.
+    const isDuplicate = conv.messages.some(m => m.dateEmis === msg.dateEmis && m.content === msg.content);
+    
+    if (!isDuplicate) {
+      conv.messages.push(msg);
+      await store.put(conv);
+    }
+  }
+  
+  await tx.done;
 }
