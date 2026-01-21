@@ -84,6 +84,25 @@ Pour lancer les tests :
     npm test -- Header
     ```
 
+### Tests E2E (End-to-End)
+
+Les tests de bout en bout sont gérés par **Playwright**. Ils simulent un navigateur réel pour vérifier les parcours utilisateurs.
+
+1.  **Lancer les tests (mode headless) :**
+    ```bash
+    npm run test-e2e
+    ```
+
+2.  **Lancer avec interface visuelle (mode UI) :**
+    ```bash
+    npx playwright test --ui
+    ```
+
+3.  **Voir le rapport de test :**
+    ```bash
+    npx playwright show-report
+    ```
+
 ## 🔐 Variables d'Environnement
 
 L'application utilise les variables suivantes (définies dans `.env` ou `.env.local`) :
