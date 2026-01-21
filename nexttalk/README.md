@@ -73,9 +73,16 @@ NextTalk est une application de messagerie moderne et performante construite ave
 Le projet utilise **Vitest** pour les tests unitaires et d'intégration.
 
 Pour lancer les tests :
-```bash
-npm test
-```
+
+1.  **Lancer tous les tests :**
+    ```bash
+    npm test
+    ```
+
+2.  **Lancer un test spécifique (ex: Header) :**
+    ```bash
+    npm test -- Header
+    ```
 
 ## 🔐 Variables d'Environnement
 
