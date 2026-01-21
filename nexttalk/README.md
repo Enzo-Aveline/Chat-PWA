@@ -11,7 +11,7 @@ NextTalk est une application de messagerie moderne et performante construite ave
 *   **📸 Partage Multimédia** :
     *   Prenez des photos directement depuis l'application via la caméra.
     *   Envoyez des images stockées sur votre appareil.
-*   **📍 Géolocalisation** : Partage et affichage de votre localisation actuelle via l'API de géolocalisation.
+*   **📍 Géolocalisation** : Affichage de votre localisation actuelle via l'API de géolocalisation.
 *   **🔔 Notifications** : Recevez des notifications pour les nouveaux messages, même lorsque vous n'êtes pas sur l'onglet actif.
 *   **📱 Expérience PWA** :
     *   Installation sur smartphone et desktop.
@@ -50,8 +50,8 @@ NextTalk est une application de messagerie moderne et performante construite ave
 
 1.  **Cloner le dépôt :**
     ```bash
-    git clone https://github.com/VOTRE_USERNAME/nexttalk.git
-    cd nexttalk
+    git clone https://github.com/Enzo-Aveline/Chat-PWA.git
+    cd Chat-PWA/nexttalk/
     ```
 
 2.  **Installer les dépendances**
@@ -62,7 +62,7 @@ NextTalk est une application de messagerie moderne et performante construite ave
 3.  **Configuration (.env)**
     Créez un fichier `.env` à la racine du projet pour configurer l'URL de l'API Socket.io (optionnel, une valeur par défaut est utilisée).
     ```env
-    NEXT_PUBLIC_SOCKET_URL=https://api.tools.gavago.fr
+    NEXT_PUBLIC_SOCKET_URL=https://{{domaine-api}}
     ```
 
 4.  **Lancer en développement**
@@ -78,9 +78,13 @@ NextTalk est une application de messagerie moderne et performante construite ave
 Le projet intègre deux niveaux de tests pour assurer la robustesse du code.
 
 ### Lancer les Tests Unitaires
-Les tests unitaires (avec Vitest) vérifient la logique métier isolée (ex: IndexedDB).
+Les tests unitaires et composants (avec Vitest) vérifient la logique métier isolée (ex: IndexedDB).
 ```bash
 npm run test
+```
+Pour lancer un fichier de test spécifique (ex: uniquement les tests liés à `idb`) :
+```bash
+npm test -- idb
 ```
 
 ### Lancer les Tests E2E
@@ -88,15 +92,24 @@ Les tests de bout en bout (avec Playwright) simulent des parcours utilisateurs c
 ```bash
 npm run test-e2e
 ```
+Pour afficher le rapport visuel des derniers tests exécutés :
+```bash
+npx playwright show-report
+```
 *Note : Assurez-vous que le serveur de développement ne tourne pas déjà sur le port 3000, ou laissez Playwright le lancer automatiquement.*
 
 ### CI/CD
-Bien qu'il n'y ait pas de workflow GitHub Actions configuré par défaut dans ce dépôt, une pipeline CI/CD standard pour ce projet devrait :
-1.  Installer les dépendances (`npm ci`).
-2.  Linter le code (`next lint`).
-3.  Exécuter les tests unitaires (`npm run test`).
-4.  Construire l'application (`npm run build`).
-5.  Exécuter les tests E2E (`npm run test-e2e`).
+
+Le projet utilise GitHub Actions pour un déploiement continu (CD) sur un VPS.
+
+**Workflow :** `deploy-nexttalk.yml`
+*   **Trigger** : Push sur la branche `main` (fichiers dans `/nexttalk`).
+*   **Actions** :
+    1.  Connexion SSH au VPS.
+    2.  `git pull` des derniers changements.
+    3.  Installation des dépendances (`npm i`).
+    4.  Build de l'application (`npm run build`).
+    5.  Redémarrage du service avec PM2 (`pm2 restart nexttalk`).
 
 ## 📦 Build et Production
 
