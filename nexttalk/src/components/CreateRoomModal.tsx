@@ -64,6 +64,9 @@ export default function CreateRoomModal({ open, onClose, onRoomCreated, onError 
         return;
       }
 
+
+      // Create room
+      // pas d'API pour créer une room ...
       const apiUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'https://api.tools.gavago.fr';
       const response = await fetch(`${apiUrl}/socketio/chat/${encodeURIComponent(trimmedName)}`, {
         method: 'GET',
