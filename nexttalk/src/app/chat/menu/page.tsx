@@ -1,6 +1,7 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Loader from "../../../components/Loader";
 import CreateRoomModal from "../../../components/CreateRoomModal";
 import ProfileModal from "../../../components/ProfileModal";
 import Toast from "../../../components/Toast";
@@ -23,6 +24,7 @@ type Room = {
  */
 export default function ChatMenuPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [monitoredRooms, setMonitoredRooms] = useState<string[]>([]);
@@ -33,7 +35,8 @@ export default function ChatMenuPage() {
    * Charge la liste des rooms depuis l'API.
    * Transforme les clés brutes (souvent encodées) en noms lisibles.
    */
-  const loadRooms = () => {
+  const loadRooms = (isPolling = false) => {
+    if (!isPolling) setIsLoading(true);
     fetch("https://api.tools.gavago.fr/socketio/api/rooms")
       .then((r) => r.json())
       .then((json) => {
@@ -55,6 +58,9 @@ export default function ChatMenuPage() {
       })
       .catch(() => {
         setRooms([]);
+      })
+      .finally(() => {
+        if (!isPolling) setIsLoading(false);
       });
   };
 
@@ -64,7 +70,7 @@ export default function ChatMenuPage() {
    */
   useEffect(() => {
     loadRooms();
-    const interval = setInterval(loadRooms, 5000);
+    const interval = setInterval(() => loadRooms(true), 5000);
 
     // Restore monitored rooms from localStorage
     try {
@@ -284,37 +290,40 @@ export default function ChatMenuPage() {
           </header>
 
           <ul className="room-list">
-            {rooms.length === 0 && (
+            {isLoading ? (
+              <Loader />
+            ) : rooms.length === 0 ? (
               <li className="text-muted" style={{ textAlign: 'center', padding: '2rem' }}>
                 Aucune room trouvée. Crée-en une !
               </li>
+            ) : (
+              rooms.map((r) => {
+                const isMonitored = monitoredRooms.includes(r.name);
+                return (
+                  <li
+                    key={r.rawKey}
+                    onClick={() => openRoom(r.name)}
+                    className="room-item card-hover"
+                  >
+                    <div className="room-content">
+                      <div className="room-title">{r.name}</div>
+                      <div className="room-meta">{r.clients} connecté(s)</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <button
+                        className={`btn btn-sm ${isMonitored ? "btn-primary" : "btn-ghost"}`}
+                        onClick={(e) => toggleNotification(e, r.name)}
+                        title={isMonitored ? "Désactiver les notifications" : "Activer les notifications"}
+                        style={{ fontSize: '1.2rem', padding: '0.2rem 0.6rem' }}
+                      >
+                        {isMonitored ? "🔔" : "🔕"}
+                      </button>
+                      <button className="btn btn-ghost btn-sm">Rejoindre</button>
+                    </div>
+                  </li>
+                );
+              })
             )}
-            {rooms.map((r) => {
-              const isMonitored = monitoredRooms.includes(r.name);
-              return (
-                <li
-                  key={r.rawKey}
-                  onClick={() => openRoom(r.name)}
-                  className="room-item card-hover"
-                >
-                  <div className="room-content">
-                    <div className="room-title">{r.name}</div>
-                    <div className="room-meta">{r.clients} connecté(s)</div>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <button
-                      className={`btn btn-sm ${isMonitored ? "btn-primary" : "btn-ghost"}`}
-                      onClick={(e) => toggleNotification(e, r.name)}
-                      title={isMonitored ? "Désactiver les notifications" : "Activer les notifications"}
-                      style={{ fontSize: '1.2rem', padding: '0.2rem 0.6rem' }}
-                    >
-                      {isMonitored ? "🔔" : "🔕"}
-                    </button>
-                    <button className="btn btn-ghost btn-sm">Rejoindre</button>
-                  </div>
-                </li>
-              );
-            })}
           </ul>
         </div>
 
