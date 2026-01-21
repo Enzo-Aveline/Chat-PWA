@@ -2,6 +2,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import socket, { joinRoom, leaveRoom, disconnectSocket, ChatMessage } from "../../../lib/socket";
+import {
+  getConversation,
+  addMessageToConversation,
+  savePendingMessage,
+  getPendingMessages,
+  deletePendingMessage
+} from "../../../lib/idb";
 import ChatImage from "../../../components/ChatImage";
 import CameraModal from "../../../components/CameraModal";
 
@@ -45,6 +52,29 @@ export default function ChatRoomPage() {
     if (mountedRef.current) return;
     mountedRef.current = true;
 
+    // 1. Charger l'historique local (offline-first)
+    getConversation(roomId).then((conv) => {
+      if (conv && conv.messages) {
+        setMessages((prev) => {
+          // Fusionner l'historique (conv.messages) avec les messages potentiellement reçus (prev)
+          // pendant le chargement asynchrone pour éviter d'écraser le direct.
+          const combined = [...conv.messages];
+
+          prev.forEach(p => {
+            const exists = combined.some(c =>
+              c.dateEmis === p.dateEmis &&
+              c.content === p.content &&
+              c.pseudo === p.pseudo
+            );
+            if (!exists) combined.push(p);
+          });
+
+          // Re-trier par date pour être sûr
+          return combined.sort((a, b) => new Date(a.dateEmis).getTime() - new Date(b.dateEmis).getTime());
+        });
+      }
+    });
+
     joinRoom(pseudo, roomId);
 
     // Nettoyage de sécurité en cas de fermeture d'onglet/navigateur
@@ -72,15 +102,92 @@ export default function ChatRoomPage() {
       }
 
       setMessages((prev) => {
-        // Déduplication simple basée sur le contenu, le pseudo et le timestamp (à 1s près)
-        const isDuplicate = prev.some(
+        // 1. Déduplication par ID (si présent)
+        if (msg.id) {
+          const existingIndex = prev.findIndex(m => m.id === msg.id);
+          if (existingIndex !== -1) {
+            // On a trouvé le message local correspondant (optimistic)
+            // On le remplace par la version serveur (autoritaire sur la date, etc.)
+            const newArr = [...prev];
+            newArr[existingIndex] = msg;
+            return newArr;
+          }
+        }
+
+        // 2. Fallback: Déduplication floue pour les messages sans ID ou venant d'autres clients
+        // On garde la tolérance de 1s pour le "temps réel", mais pour nos propres messages offline (décalage temporel),
+        // on espère que l'ID a fonctionné. Si le serveur strip l'ID, on utilise une heuristique.
+        const isDuplicateFuzzy = prev.some(
           m => m.content === msg.content &&
             m.pseudo === msg.pseudo &&
             Math.abs(new Date(m.dateEmis).getTime() - new Date(msg.dateEmis).getTime()) < 1000
         );
-        if (isDuplicate) return prev;
+
+        // Hack: Si c'est MON message, qu'il a le même contenu, mais que l'ID n'est pas là (server strip?),
+        // on peut potentiellement le considérer comme un doublon si c'était le dernier message envoyé ?
+        // Trop risqué pour l'instant, on mise sur le support de l'ID.
+
+        if (isDuplicateFuzzy) return prev;
+
+        // Persister le message reçu pour l'historique offline
+        addMessageToConversation(roomId, msg);
+
         return [...prev, msg];
       });
+    }
+
+    // Fonction de synchronisation des messages en attente
+    const syncPendingMessages = async () => {
+      const pending = await getPendingMessages();
+      if (pending.length === 0) return;
+
+      console.log(`[Sync] Found ${pending.length} pending messages`);
+
+      for (const msg of pending) {
+        // Envoi via socket
+        socket.emit("chat-msg", {
+          id: msg.id, // Important: transmettre l'ID d'origine
+          content: msg.content,
+          roomName: msg.roomName || roomId,
+          pseudo: msg.pseudo
+        });
+
+        // Supprimer une fois envoyé (ou du moins émis)
+        await deletePendingMessage(msg.dateEmis);
+      }
+    };
+
+    // Gestion de la reconnexion : on doit rejoindre la room à nouveau
+    // et synchroniser les messages en attente.
+    const handleReconnection = () => {
+      console.log("[Page] Socket connected/reconnected");
+      // On rejoint la room (socket.ts s'assure de ne pas le faire en double si déjà clean)
+      joinRoom(pseudo, roomId);
+
+      // Petit délai pour laisser le temps au join de se propager avant d'envoyer les messages
+      setTimeout(() => {
+        syncPendingMessages();
+      }, 500);
+    };
+
+    socket.on("connect", handleReconnection);
+
+    // Écouteur explicite "online" du navigateur (utile pour PWA/Mobile quand le socket met du temps)
+    const handleOnline = () => {
+      console.log("[Page] Browser online event");
+      if (!socket.connected) {
+        console.log("[Page] Socket not connected, forcing connect...");
+        socket.connect();
+      } else {
+        // Déjà connecté, on tente quand même de resacrer la logique de room/sync
+        handleReconnection();
+      }
+    };
+    window.addEventListener("online", handleOnline);
+
+    // Si déjà connecté au montage
+    if (socket.connected) {
+      handleReconnection();
     }
 
     function handleUserJoin(info: any) {
@@ -120,6 +227,8 @@ export default function ChatRoomPage() {
       socket.off("chat-disconnected", handleUserLeave);
       socket.off("error", handleError);
 
+      window.removeEventListener("online", handleOnline);
+
       mountedRef.current = false;
     };
   }, [roomId, pseudo]);
@@ -143,7 +252,32 @@ export default function ChatRoomPage() {
     sendingRef.current = true;
     const content = input.trim();
 
-    socket.emit("chat-msg", { content, roomName: roomId });
+    // Créer l'objet message complet pour affichage immédiat et stockage local
+    const tempMsg: ChatMessage = {
+      id: crypto.randomUUID(), // Génération ID unique client
+      pseudo,
+      content,
+      roomName: roomId,
+      dateEmis: new Date().toISOString(),
+      category: "MESSAGE"
+    };
+
+    // 1. Optimistic UI update
+    setMessages(prev => [...prev, tempMsg]);
+    // 2. Persister dans l'historique local (pour le rechargement futur)
+    addMessageToConversation(roomId, tempMsg);
+
+    if (socket.connected) {
+      socket.emit("chat-msg", {
+        id: tempMsg.id, // Envoi de l'ID
+        content,
+        roomName: roomId
+      });
+    } else {
+      console.log("[Offline] Queuing message");
+      savePendingMessage(roomId, tempMsg);
+    }
+
     setInput("");
 
     setTimeout(() => {

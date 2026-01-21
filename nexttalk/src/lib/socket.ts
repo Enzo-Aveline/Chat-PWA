@@ -29,7 +29,7 @@ type ServerToClient = {
  */
 type ClientToServer = {
   "chat-join-room": (payload: { pseudo: any; roomName: string }) => void;
-  "chat-msg": (payload: { content: string; roomName: string; pseudo?: any }) => void;
+  "chat-msg": (payload: { id?: string; content: string; roomName: string; pseudo?: any }) => void;
   "chat-leave-room": (payload: { roomName: string }) => void;
 };
 
@@ -46,6 +46,12 @@ const socket: Socket<ServerToClient, ClientToServer> = io("https://api.tools.gav
 const joinedRooms = new Set<string>();
 const pendingJoins = new Set<string>();
 let connectPromise: Promise<void> | null = null;
+
+socket.on("disconnect", (reason) => {
+  console.log(`[Socket] Disconnected: ${reason}`);
+  joinedRooms.clear();
+  pendingJoins.clear();
+});
 
 /**
  * Rejoint une salle de chat spécifique.
