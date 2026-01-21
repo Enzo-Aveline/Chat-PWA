@@ -17,6 +17,11 @@ export const metadata: Metadata = {
   description: "Messagerie instantanée PWA avec offline et notifications",
 };
 
+/**
+ * Layout racine de l'application Next.js.
+ * Définit la structure HTML de base, les polices, et les métadonnées pour la PWA (manifest, icons, theme-color).
+ * Ce fichier enveloppe toutes les pages de l'application.
+ */
 export default function RootLayout({
   children,
 }: Readonly<{

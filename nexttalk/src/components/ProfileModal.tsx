@@ -10,6 +10,11 @@ type ProfileModalProps = {
     locationError: string | null;
 };
 
+/**
+ * Modale affichant les informations du profil utilisateur courant.
+ * Affiche : Avatar, Pseudo, Adresse (si géoloc activée) et niveau de batterie.
+ * Utilise l'API expérimentale `navigator.getBattery()` pour l'état de la batterie.
+ */
 export default function ProfileModal({ open, onClose, pseudo, photo, address, locationError }: ProfileModalProps) {
     const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
     const [isCharging, setIsCharging] = useState(false);
@@ -25,7 +30,7 @@ export default function ProfileModal({ open, onClose, pseudo, photo, address, lo
         };
 
         const initBattery = async () => {
-            // @ts-ignore
+            // @ts-ignore : L'API Battery est standard mais pas encore dans les types TS par défaut partout
             if (navigator.getBattery) {
                 try {
                     // @ts-ignore

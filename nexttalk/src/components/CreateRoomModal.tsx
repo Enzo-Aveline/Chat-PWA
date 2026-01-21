@@ -8,18 +8,26 @@ type CreateRoomModalProps = {
   onError: (message: string) => void;
 };
 
+/**
+ * Modale de création de nouveau salon.
+ * Vérifie si le salon existe déjà via l'API avant de valider.
+ */
 export default function CreateRoomModal({ open, onClose, onRoomCreated, onError }: CreateRoomModalProps) {
   const [roomName, setRoomName] = useState('');
   const [loading, setLoading] = useState(false);
 
+  /**
+   * Vérifie l'existence d'une room auprès du serveur.
+   * Récupère toutes les rooms et cherche une correspondance insensible à la casse.
+   */
   const checkRoomExists = async (name: string): Promise<boolean> => {
     try {
       const response = await fetch('https://api.tools.gavago.fr/socketio/api/rooms');
       if (!response.ok) return false;
-      
+
       const json = await response.json();
       const data = json?.data ?? {};
-      
+
       return Object.keys(data).some((rawKey) => {
         try {
           return decodeURIComponent(rawKey).toLowerCase() === name.toLowerCase();
@@ -33,9 +41,13 @@ export default function CreateRoomModal({ open, onClose, onRoomCreated, onError 
     }
   };
 
+  /**
+   * Gère la validation et la création du salon.
+   * Si succès, notifie le parent pour redirection immédiate.
+   */
   const handleCreate = async () => {
     const trimmedName = roomName.trim();
-    
+
     if (!trimmedName) {
       onError('Le nom de la room ne peut pas être vide');
       return;

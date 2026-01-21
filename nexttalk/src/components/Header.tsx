@@ -6,14 +6,24 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { getProfile, Profile, saveProfile } from "@/lib/idb";
 
+/**
+ * Composant d'en-tête global.
+ * Affiche le titre de l'application et gère l'état de connexion de l'utilisateur (affichage du profil).
+ * Persiste sur toutes les pages grâce au layout.
+ */
 export default function Header() {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
 
+  // Au montage, récupérer le profil stocké localement (IndexedDB)
   useEffect(() => {
     getProfile().then((p) => setProfile(p));
   }, []);
 
+  /**
+   * Redirige l'utilisateur vers le menu s'il est connecté,
+   * ou vers la page de login sinon.
+   */
   const handleLoginOrMenu = () => {
     if (profile) {
       router.push("/chat/menu");
@@ -22,6 +32,10 @@ export default function Header() {
     }
   };
 
+  /**
+   * Déconnexion de l'utilisateur.
+   * Efface le profil local et redirige vers l'accueil.
+   */
   const handleLogout = async () => {
     if (profile) {
       await saveProfile({ username: "", photo: null, dirty: false });

@@ -8,9 +8,17 @@ type ToastData = {
   type: ToastType;
 };
 
+/**
+ * Hook personnalisé pour gérer l'affichage de notifications (Toasts).
+ * Permet d'empiler plusieurs notifications et de les supprimer individuellement.
+ */
 export function useToast() {
   const [toasts, setToasts] = useState<ToastData[]>([]);
 
+  /**
+   * Ajoute une notification à la liste.
+   * L'ID est généré via timestamp + random pour unicité simple.
+   */
   const showToast = useCallback((message: string, type: ToastType = 'info') => {
     const id = Date.now() + Math.random();
     setToasts((prev) => [...prev, { id, message, type }]);
@@ -22,6 +30,9 @@ export function useToast() {
     }
   }, []);
 
+  /**
+   * Supprime une notification spécifique par son ID.
+   */
   const removeToast = useCallback((id: number) => {
     setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
@@ -30,6 +41,7 @@ export function useToast() {
     toasts,
     showToast,
     removeToast,
+    // Helpers pratiques pour chaque type de notification
     showError: useCallback((msg: string) => showToast(msg, 'error'), [showToast]),
     showSuccess: useCallback((msg: string) => showToast(msg, 'success'), [showToast]),
     showWarning: useCallback((msg: string) => showToast(msg, 'warning'), [showToast]),

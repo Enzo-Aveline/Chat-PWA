@@ -5,6 +5,16 @@ import socket, { joinRoom, leaveRoom, disconnectSocket, ChatMessage } from "../.
 import ChatImage from "../../../components/ChatImage";
 import CameraModal from "../../../components/CameraModal";
 
+/**
+ * Page de salle de discussion (Chat Room).
+ * Cœur de l'application de messagerie.
+ * Gère :
+ * - La connexion Socket.io au salon spécifique.
+ * - L'affichage de l'historique des messages.
+ * - L'envoi de messages texte et d'images (via API + notif socket).
+ * - Les notifications de connexion/déconnexion des autres utilisateurs.
+ * - L'intégration de la modale caméra.
+ */
 export default function ChatRoomPage() {
   const params = useParams();
   const rawId = params?.id as string | string[] | undefined;
@@ -12,6 +22,7 @@ export default function ChatRoomPage() {
 
   const router = useRouter();
 
+  // Récupération du profil depuis localStorage (plus rapide que IDB pour l'UI synchrone)
   const [pseudo] = useState<string>(() =>
     typeof window !== "undefined" ? localStorage.getItem("pseudo") || "Invité" : "Invité"
   );
@@ -25,6 +36,10 @@ export default function ChatRoomPage() {
   const listRef = useRef<HTMLDivElement | null>(null);
   const mountedRef = useRef(false);
 
+  /**
+   * Effet principal de gestion du cycle de vie du socket dans la room.
+   * Gère la connexion, l'écoute des événements, et le nettoyage propre.
+   */
   useEffect(() => {
     // Prevent double mount in Strict Mode
     if (mountedRef.current) return;
@@ -32,8 +47,7 @@ export default function ChatRoomPage() {
 
     joinRoom(pseudo, roomId);
 
-
-
+    // Nettoyage de sécurité en cas de fermeture d'onglet/navigateur
     const handleBeforeUnload = () => {
       try {
         leaveRoom(roomId);
@@ -44,12 +58,12 @@ export default function ChatRoomPage() {
     window.addEventListener("pagehide", handleBeforeUnload);
 
     function handleNewMessage(msg: ChatMessage) {
-      // Filter out messages that don't belong to the current room
+      // Filtrer les messages qui ne concernent pas cette room (par sécurité)
       if (msg.roomName && msg.roomName !== roomId) {
         return;
       }
 
-      // Vibrate on incoming message
+      // Vibration sur message entrant (si ce n'est pas nous)
       if (msg.pseudo !== pseudo) {
         if (typeof navigator !== "undefined" && navigator.vibrate) {
           console.log("Vibrate");
@@ -58,7 +72,7 @@ export default function ChatRoomPage() {
       }
 
       setMessages((prev) => {
-        // Avoid duplicate messages with same content and timestamp
+        // Déduplication simple basée sur le contenu, le pseudo et le timestamp (à 1s près)
         const isDuplicate = prev.some(
           m => m.content === msg.content &&
             m.pseudo === msg.pseudo &&
@@ -87,6 +101,7 @@ export default function ChatRoomPage() {
       setMessages((prev) => [...prev, m]);
     }
 
+    // Abonnements aux événements Socket
     socket.on("chat-msg", handleNewMessage);
     socket.on("chat-joined-room", handleUserJoin);
     socket.on("chat-disconnected", handleUserLeave);
@@ -109,6 +124,7 @@ export default function ChatRoomPage() {
     };
   }, [roomId, pseudo]);
 
+  // Scroll automatique vers le bas à chaque nouveau message
   useEffect(() => {
     if (listRef.current) {
       listRef.current.scrollTop = listRef.current.scrollHeight;
@@ -117,6 +133,10 @@ export default function ChatRoomPage() {
 
   const sendingRef = useRef(false);
 
+  /**
+   * Envoi d'un message texte simple.
+   * Utilise un verrou (sendingRef) et un timeout pour éviter le double-envoi (debounce).
+   */
   function sendMessage() {
     if (!input.trim() || sendingRef.current) return;
 
@@ -133,6 +153,12 @@ export default function ChatRoomPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  /**
+   * Logique complexe d'envoi d'image :
+   * 1. Compresse l'image via Canvas (max 800x600, qualité 0.7).
+   * 2. Upload l'image sur l'API `/api/images/:id` (id = socket.id).
+   * 3. Si succès, envoie un message socket contenant l'URL de l'image `[IMAGE] url`.
+   */
   const processAndSendImage = async (base64: string) => {
     // Compress image first
     const img = new Image();
@@ -164,7 +190,6 @@ export default function ChatRoomPage() {
       const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
 
       // Use socket.id as required by the API (images are tied to the connected user)
-      // Note: This API seems to only support one current image per connected user.
       const userId = socket.id;
 
       if (!userId) {
@@ -204,6 +229,10 @@ export default function ChatRoomPage() {
     };
   };
 
+  /**
+   * Gestion de la sélection de fichier image.
+   * Vérifie la taille (max 5Mo) avant traitement.
+   */
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -261,7 +290,7 @@ export default function ChatRoomPage() {
           const isMe = m.pseudo === pseudo;
           const isServer = m.pseudo === "SERVER" || m.category === "INFO";
 
-          // Special handling for server image notifications
+          // Gestion spéciale pour les notifications serveur d'image ("nouvelle image pour le user X")
           const lowerContent = m.content.toLowerCase().trim();
           if (lowerContent.startsWith("nouvelle image pour le user")) {
             const parts = m.content.trim().split(" ");
@@ -272,7 +301,7 @@ export default function ChatRoomPage() {
             }
 
             if (potentialId) {
-              // Prevent double display for own images (handled by standard flow)
+              // On n'affiche pas cette notification spéciale si c'est notre propre image (déjà affichée via le flux normal)
               if (potentialId === pseudo) return null;
 
               return (
@@ -305,7 +334,7 @@ export default function ChatRoomPage() {
               <div className={`message ${isMe ? 'message-sent' : 'message-received'}`}>
                 <div className="message-author">{isMe ? "Vous" : m.pseudo}</div>
                 {(() => {
-                  // Debug log
+                  // Rendu conditionnel du contenu (Texte, Image ou URL API)
                   console.log("Message content:", m.content);
 
                   if (m.content.startsWith("IMAGE:")) {

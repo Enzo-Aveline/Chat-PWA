@@ -4,6 +4,11 @@ import { useRouter } from 'next/navigation';
 import { getProfile, saveProfile } from '../../lib/idb';
 import CameraModal from '../../components/CameraModal';
 
+/**
+ * Page de configuration du profil (Login).
+ * Permet à l'utilisateur de définir son pseudo et sa photo de profil.
+ * Les informations sont sauvegardées dans IndexedDB et localStorage pour persistance.
+ */
 export default function ProfilePage() {
   const [username, setUsername] = useState('');
   const [photo, setPhoto] = useState<string | null>(null);
@@ -29,6 +34,10 @@ export default function ProfilePage() {
     }
   };
 
+  /**
+   * Sauvegarde le profil et redirige vers le menu des salons.
+   * Met à jour à la fois IndexedDB (structuré) et localStorage (accès rapide synchrone).
+   */
   const handleSave = async () => {
     try {
       await saveProfile({
@@ -49,6 +58,9 @@ export default function ProfilePage() {
     }
   };
 
+  /**
+   * Gestion de l'upload de photo via input file standard.
+   */
   const handleFileInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -85,7 +97,7 @@ export default function ProfilePage() {
               {username?.[0]?.toUpperCase() || 'U'}
             </div>
           )}
-          
+
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button
               onClick={() => setShowCameraModal(true)}

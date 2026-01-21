@@ -7,6 +7,15 @@ interface ChatImageProps {
     pseudo?: string;
 }
 
+/**
+ * Composant d'affichage d'image intelligent.
+ * Gère plusieurs sources possibles :
+ * - Data URI (base64) direct.
+ * - URL absolue ou relative (appel API).
+ * - Résolution d'image par pseudo (tente de trouver le socket ID de l'utilisateur pour récupérer sa photo, mode compat).
+ * 
+ * Inclut un état de chargement et un gestionnaire d'erreurs visuel.
+ */
 export default function ChatImage({ src, pseudo }: ChatImageProps) {
     const [imgSrc, setImgSrc] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
@@ -15,7 +24,7 @@ export default function ChatImage({ src, pseudo }: ChatImageProps) {
     useEffect(() => {
         let isMounted = true;
         const fetchImage = async (url: string) => {
-            // Add cache buster
+            // Ajout d'un cache-buster pour éviter que le navigateur ne serve une vieille version
             const fetchUrl = url.includes('?') ? `${url}&t=${Date.now()}` : `${url}?t=${Date.now()}`;
             console.log("[ChatImage] Fetching:", fetchUrl);
 
@@ -27,6 +36,7 @@ export default function ChatImage({ src, pseudo }: ChatImageProps) {
                 const data = await res.json();
 
                 if (isMounted) {
+                    // L'API peut retourner data.data_image ou data.data selon le point de terminaison
                     const content = data.data_image || data.data;
                     if (data.success && content) {
                         setImgSrc(content);
@@ -45,6 +55,8 @@ export default function ChatImage({ src, pseudo }: ChatImageProps) {
             }
         };
 
+        // Fonction complexe pour tenter de retrouver l'image d'un user via son pseudo et les rooms
+        // (Méthode de fallback si on n'a pas l'ID direct)
         const resolvePseudo = async () => {
             if (!pseudo) return;
             setLoading(true);
@@ -91,12 +103,13 @@ export default function ChatImage({ src, pseudo }: ChatImageProps) {
 
         if (!src) return;
 
-        // Existing Src Logic
+        // Si c'est déjà du base64, pas besoin de fetch
         if (src.startsWith("data:")) {
             setImgSrc(src);
             return;
         }
 
+        // Si c'est une URL d'API, on doit fetch le contenu JSON
         if (src.includes("/api/images/")) {
             setLoading(true);
             setError(null);
@@ -104,6 +117,7 @@ export default function ChatImage({ src, pseudo }: ChatImageProps) {
             return () => { isMounted = false; };
         }
 
+        // Sinon (URL standard), on l'utilise direct
         setImgSrc(src);
         return () => { isMounted = false; };
 

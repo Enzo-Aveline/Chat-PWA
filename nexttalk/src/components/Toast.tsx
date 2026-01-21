@@ -8,7 +8,14 @@ type ToastProps = {
   onClose: () => void;
 };
 
+/**
+ * Composant UI pour l'affichage d'une notification toast individuelle.
+ * Gère sa propre durée de vie via un timer interne.
+ * Animation d'entrée via CSS-in-JS (style jsx).
+ */
 export default function Toast({ message, type = 'info', duration = 3000, onClose }: ToastProps) {
+
+  // Auto-fermeture après 'duration' ms
   useEffect(() => {
     const timer = setTimeout(() => {
       onClose();
