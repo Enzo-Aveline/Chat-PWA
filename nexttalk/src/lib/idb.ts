@@ -1,50 +1,76 @@
-import { openDB } from 'idb';
+import { openDB, IDBPDatabase } from 'idb';
+import { ChatMessage } from './socket';
 
 const DB_NAME = 'nexttalk-db';
-const DB_VERSION = 2; // ⬅️ incrémenter la version pour forcer l'upgrade
+const DB_VERSION = 2; // Incrémenté si changement de structure, bonne pratique pour les upgrades de schéma.
 
-export interface Message {
-  from: "bot" | "user";
-  text: string;         // si c’est une image, on met l’URL/base64
-  date: Date | string;
-  // "system" pour join/leave notifications
-  type: "text" | "image" | "system";
-  serverId?: string;    // id fourni par le serveur (pour dédup)
-  localId?: string;     // id local temporaire (optimistic)
-  pending?: boolean;    // true tant que la confirmation serveur n'est pas reçue
-  senderName?: string;   // nom affiché de l'émetteur (client ou distant)
-}
+// Re-export specific types if needed, or just use ChatMessage
+export type { ChatMessage };
 
+/**
+ * Structure d'une conversation stockée localement.
+ */
 export interface Conversation {
   id: string;
   name: string;
-  messages: Message[];
+  messages: ChatMessage[];
 }
 
+/**
+ * Structure du profil utilisateur local.
+ */
 export interface Profile {
   username: string;
   photo: string | null;
-  dirty: boolean;
+  dirty: boolean; // Flag indiquant si le profil a été modifié localement
 }
 
-const initDB = async () => {
-  return openDB(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      if (!db.objectStoreNames.contains('profile')) {
-        db.createObjectStore('profile');
-      }
-      if (!db.objectStoreNames.contains('conversations')) {
-        db.createObjectStore('conversations');
-      }
-    },
-  });
+let dbPromise: Promise<IDBPDatabase> | null = null;
+
+/**
+ * Initialise la connexion à IndexedDB.
+ * Utilise le pattern singleton pour ne pas rouvrir la connexion à chaque appel.
+ * Crée les stores 'profile' et 'conversations' si nécessaires lors de l'upgrade.
+ */
+const initDB = () => {
+  if (!dbPromise) {
+    dbPromise = openDB(DB_NAME, DB_VERSION, {
+      upgrade(db) {
+        if (!db.objectStoreNames.contains('profile')) {
+          db.createObjectStore('profile');
+        }
+        if (!db.objectStoreNames.contains('conversations')) {
+          db.createObjectStore('conversations');
+        }
+      },
+    });
+  }
+  return dbPromise;
 };
 
+/**
+ * Ferme explicitement la connexion IDB.
+ * Utile lors du nettoyage ou déconnexion.
+ */
+export async function closeDBConnection() {
+  if (dbPromise) {
+    const db = await dbPromise;
+    db.close();
+    dbPromise = null;
+  }
+}
+
+/**
+ * Sauvegarde le profil utilisateur dans IndexedDB.
+ */
 export async function saveProfile(profile: Profile): Promise<void> {
   const db = await initDB();
   await db.put('profile', { ...profile, dirty: true }, 'userProfile');
 }
 
+/**
+ * Récupère le profil utilisateur depuis IndexedDB.
+ */
 export async function getProfile(): Promise<Profile | null> {
   const db = await initDB();
   const profile = await db.get('profile', 'userProfile');
@@ -53,10 +79,14 @@ export async function getProfile(): Promise<Profile | null> {
 
 // --- Conversations ---
 
+/**
+ * Sauvegarde une conversation entière (avec ses messages) dans IndexedDB.
+ * Gère le cas où 'id' est in-line ou out-of-line selon le store.
+ */
 export async function saveConversation(conv: Conversation): Promise<void> {
   const db = await initDB();
-  // Detect if the object store uses an inline keyPath (e.g. "id").
-  // If it does, call put without the explicit key. Otherwise provide conv.id.
+  // Détecte si le store utilise une clé "inline" (ex: "id").
+  // Si oui, on put directement l'objet. Sinon, on fournit la clé conv.id.
   const tx = db.transaction('conversations', 'readwrite');
   const store = tx.store;
   const usesInlineKey = store.keyPath != null;
@@ -68,116 +98,122 @@ export async function saveConversation(conv: Conversation): Promise<void> {
   await tx.done;
 }
 
+/**
+ * Récupère une conversation spécifique par son ID.
+ */
 export async function getConversation(id: string): Promise<Conversation | null> {
   const db = await initDB();
   return (await db.get('conversations', id)) || null;
 }
 
+/**
+ * Récupère TOUTES les conversations.
+ * Stratégie hybride/sync :
+ * 1. Tente de récupérer la liste des rooms depuis l'API distante.
+ * 2. Si succès, fusionne avec les données locales (préserve les messages existants).
+ * 3. Si échec API (offline), retourne uniquement les données locales.
+ */
 export async function getAllConversations(): Promise<Conversation[]> {
+  const db = await initDB();
+  
   try {
     const res = await fetch("https://api.tools.gavago.fr/socketio/api/rooms");
     console.debug("[rooms] fetch status", res.status, res.statusText);
 
     if (!res.ok) {
-      const text = await res.text().catch(() => "<no body>");
-      console.warn("[rooms] bad response body:", text);
-      throw new Error("API non OK");
+       // fallback si API échoue
+       throw new Error("API non OK");
     }
 
-    // try to parse JSON safely (some responses may not be strict)
+    // Essayer de parser le JSON de manière robuste
     let body: any;
     try {
       body = await res.json();
     } catch (e) {
-      // response not JSON — try as text then attempt to extract JSON array
+      // fallback parsing texte
       const txt = await res.text().catch(() => "");
-      console.warn("[rooms] response not JSON, raw text:", txt);
-      // try to parse text directly
-      try {
-        body = JSON.parse(txt);
-      } catch {
-        // leave as string
-        body = txt;
-      }
+      try { body = JSON.parse(txt); } catch { body = txt; }
     }
 
-    // Normalize rooms into string[]
+    // Normaliser le format des rooms en string[]
+    // L'API peut retourner différents formats {data: ...} ou direct array
     let rooms: string[] = [];
     if (Array.isArray(body)) {
       rooms = body;
     } else if (body && typeof body.data === "object" && !Array.isArray(body.data)) {
-      // Newer API shape: data is an object with roomName keys
       rooms = Object.keys(body.data);
     } else if (body && typeof body.data === "string") {
-      // API historically returned { data: '["room1","room2"]' }
       try {
         const parsed = JSON.parse(body.data);
-        if (Array.isArray(parsed)) rooms = parsed;
+         if (Array.isArray(parsed)) rooms = parsed;
       } catch {
-        const match = (body.data as string).match(/\[.*\]/);
-        if (match) {
-          try {
-            const parsed = JSON.parse(match[0]);
-            if (Array.isArray(parsed)) rooms = parsed;
-          } catch (e) {
-            console.warn("[rooms] can't parse body.data as JSON array", e);
-          }
-        }
+         // fallback simpliste regex
+         const match = (body.data as string).match(/\[.*\]/);
+         if (match) {
+            try { if (Array.isArray(JSON.parse(match[0]))) rooms = JSON.parse(match[0]); } catch {}
+         }
       }
     } else if (typeof body === "string") {
-      // body might be a JSON array string
-      try {
-        const parsed = JSON.parse(body);
-        if (Array.isArray(parsed)) rooms = parsed;
-      } catch {
-        console.warn("[rooms] body is string but not JSON array");
-      }
-    } else {
-      console.warn("[rooms] unexpected body shape", body);
+       try { if (Array.isArray(JSON.parse(body))) rooms = JSON.parse(body); } catch {}
     }
 
-    // ensure only string ids
+    // Sécurité: garder uniquement les strings
     rooms = rooms.filter(r => typeof r === "string");
 
-    const conversations: Conversation[] = rooms.map((room) => ({
-      id: room,
-      name: room,
-      messages: []
-    }));
-
-    // persist to IDB respecting store keyPath configuration
-    const db = await initDB();
+    // Récupérer toutes les conversations existantes pour préserver les messages locaux
     const tx = db.transaction('conversations', 'readwrite');
     const store = tx.store;
     const usesInlineKey = store.keyPath != null;
-    for (const conv of conversations) {
-      if (usesInlineKey) {
-        await db.put("conversations", conv);
+
+    const existingConvs: Conversation[] = [];
+    let cursor = await store.openCursor();
+    while (cursor) {
+      existingConvs.push(cursor.value);
+      cursor = await cursor.continue();
+    }
+
+    // Fusionner la liste du serveur avec les données locales
+    const mergedConversations: Conversation[] = [];
+
+    for (const roomName of rooms) {
+      const existing = existingConvs.find(c => c.id === roomName);
+      // Si on connait déjà la room, on garde son contenu (messages).
+      // Sinon on crée une nouvelle entry vide.
+      const conv: Conversation = existing 
+        ? existing 
+        : { id: roomName, name: roomName, messages: [] };
+      
+      mergedConversations.push(conv);
+
+       // Mettre à jour la DB locale avec cette nouvelle liste (cache freshening)
+       if (usesInlineKey) {
+        await store.put(conv);
       } else {
-        await db.put("conversations", conv, conv.id);
+        await store.put(conv, conv.id);
       }
     }
+    
     await tx.done;
 
-    // fallback: if API returned empty list, return a default room
-    if (conversations.length === 0) {
-      return [{ id: "general", name: "general", messages: [] }];
-    }
-    return conversations;
+    return mergedConversations;
+
   } catch (err) {
     console.error("⚠️ getAllConversations failed:", err);
-    // fallback IDB
-    const db = await initDB();
+    // Mode OFFLINE ou Erreur API : on retourne ce qu'il y a dans IDB
     const all: Conversation[] = [];
     let cursor = await db.transaction("conversations").store.openCursor();
     while (cursor) {
       all.push(cursor.value);
       cursor = await cursor.continue();
     }
+    // Si vide, on feint une room par défaut pour ne pas casser l'UI
     return all.length ? all : [{ id: "general", name: "general", messages: [] }];
   }
 }
 
+/**
+ * Supprime une conversation de la base locale.
+ */
 export async function deleteConversation(id: string): Promise<void> {
   const db = await initDB();
   await db.delete('conversations', id);

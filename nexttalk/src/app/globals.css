@@ -303,12 +303,16 @@
 
   .room-content {
     flex: 1;
+    min-width: 0; /* Important for flex child truncation */
   }
 
   .room-title {
     font-weight: 600;
     color: var(--text-primary);
     margin-bottom: 0.25rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .room-meta {

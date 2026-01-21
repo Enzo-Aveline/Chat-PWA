@@ -3,11 +3,20 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getProfile, Profile } from '../lib/idb';
 
+/**
+ * Page d'accueil (Landing Page).
+ * Rôle :
+ * 1. Vérifier si l'utilisateur a déjà un profil stocké (IndexedDB).
+ * 2. Si oui, proposer d'aller au chat.
+ * 3. Sinon, rediriger vers le login.
+ * Affiche également un état de chargement initial.
+ */
 export default function HomePage() {
   const router = useRouter();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Vérification du profil au montage
   useEffect(() => {
     getProfile().then((p) => {
       setProfile(p);
@@ -36,10 +45,10 @@ export default function HomePage() {
   return (
     <div className="page">
       <div className="container">
-        <div style={{ 
-          display: 'flex', 
-          flexDirection: 'column', 
-          alignItems: 'center', 
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
           justifyContent: 'center',
           minHeight: 'calc(100vh - 4rem)',
           gap: '2rem',
@@ -77,8 +86,8 @@ export default function HomePage() {
               {profile?.username ? 'Accéder au Chat' : 'Se connecter'}
             </button>
             {profile?.username && (
-              <button 
-                onClick={() => router.push('/login')} 
+              <button
+                onClick={() => router.push('/login')}
                 className="btn btn-secondary"
               >
                 Modifier le profil

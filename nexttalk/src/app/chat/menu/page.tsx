@@ -13,6 +13,14 @@ type Room = {
   clients: number;
 };
 
+/**
+ * Page de menu principal des salons (Lobby).
+ * Fonctionnalités clés :
+ * 1. Liste des salons existants (polling API).
+ * 2. Création de nouveau salon.
+ * 3. Gestion des notifications par salon (rejoindre/quitter socket room sans y entrer visuellement).
+ * 4. Géolocalisation de l'utilisateur (affichage adresse ou coordonnées).
+ */
 export default function ChatMenuPage() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -21,6 +29,10 @@ export default function ChatMenuPage() {
   const router = useRouter();
   const { toasts, removeToast, showError, showSuccess } = useToast();
 
+  /**
+   * Charge la liste des rooms depuis l'API.
+   * Transforme les clés brutes (souvent encodées) en noms lisibles.
+   */
   const loadRooms = () => {
     fetch("https://api.tools.gavago.fr/socketio/api/rooms")
       .then((r) => r.json())
@@ -46,6 +58,10 @@ export default function ChatMenuPage() {
       });
   };
 
+  /**
+   * Effect de polling pour rafraîchir la liste des rooms toutes les 5s.
+   * Restaure aussi les rooms surveillées (notifications) depuis le localStorage.
+   */
   useEffect(() => {
     loadRooms();
     const interval = setInterval(loadRooms, 5000);
@@ -58,7 +74,7 @@ export default function ChatMenuPage() {
         if (Array.isArray(parsed)) {
           setMonitoredRooms(parsed);
           // Re-join rooms logic is handled by the user clicking or explicit join
-          // But since socket state might be fresh, we should re-join them if we have pseudo
+          // Mais comme le socket peut être frais, on rejoint à nouveau pour être sûr de recevoir les events
           const p = localStorage.getItem("pseudo");
           if (p) {
             parsed.forEach(r => joinRoom(p, r));
@@ -73,6 +89,10 @@ export default function ChatMenuPage() {
   const [address, setAddress] = useState<string | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
 
+  /**
+   * Gestion de la géolocalisation au montage.
+   * Tente d'obtenir lat/long puis reverse geocoding via API adresse.data.gouv.fr.
+   */
   useEffect(() => {
     let isMounted = true;
 
@@ -80,6 +100,7 @@ export default function ChatMenuPage() {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           if (!isMounted) return;
+          setLocationError(null);
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
 
@@ -100,13 +121,16 @@ export default function ChatMenuPage() {
         },
         (error) => {
           if (!isMounted) return;
-          console.error("Geoloc error details:", {
-            code: error.code,
-            message: error.message,
-            PERMISSION_DENIED: error.PERMISSION_DENIED,
-            POSITION_UNAVAILABLE: error.POSITION_UNAVAILABLE,
-            TIMEOUT: error.TIMEOUT
-          });
+          // Ignorer les erreurs vides (souvent dues à des extensions)
+          if (error.message || error.code) {
+            console.error("Geoloc error details:", {
+              code: error.code,
+              message: error.message,
+              PERMISSION_DENIED: error.PERMISSION_DENIED,
+              POSITION_UNAVAILABLE: error.POSITION_UNAVAILABLE,
+              TIMEOUT: error.TIMEOUT
+            });
+          }
           setLocationError("Loc. indisponible");
         }
       );
@@ -119,7 +143,13 @@ export default function ChatMenuPage() {
     };
   }, []);
 
-  // Listen for socket messages for notifications
+  /**
+   * Écoute globale des messages socket pour les notifications.
+   * Ne déclenche une notification que si :
+   * - La room est dans 'monitoredRooms'.
+   * - Le message ne vient pas de nous.
+   * - Le message est récent (évite le spam à la reconnexion pour l'historique).
+   */
   useEffect(() => {
     const handleMsg = (msg: ChatMessage) => {
       if (msg.roomName && monitoredRooms.includes(msg.roomName)) {
@@ -171,6 +201,10 @@ export default function ChatMenuPage() {
     }, 500);
   }
 
+  /**
+   * Active ou désactive les notifications (monitoring) pour une room.
+   * Demande la permission Notification au navigateur si nécessaire.
+   */
   function toggleNotification(e: React.MouseEvent, roomName: string) {
     e.stopPropagation();
 

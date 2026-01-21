@@ -6,6 +6,7 @@ type CameraModalProps = {
   onPhoto: (photo: string) => void;
 };
 
+// Liste des filtres CSS pré-définis applicables sur le flux vidéo et la capture canvas.
 const FILTERS = [
   { name: 'Aucun', value: '' },
   { name: 'Noir & Blanc', value: 'grayscale(1)' },
@@ -32,6 +33,14 @@ function FilterIcon({ className = "" }: { className?: string }) {
   );
 }
 
+/**
+ * Modale de caméra personnalisée.
+ * Permet de :
+ * 1. Accéder à la webcam utilisateur via `getUserMedia`.
+ * 2. Appliquer des filtres CSS en temps réel.
+ * 3. Capturer une photo via un `canvas` invisible.
+ * 4. Gérer une galerie locale (localStorage) de photos prises.
+ */
 export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [filter, setFilter] = useState<string>('');
@@ -41,6 +50,7 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
   const [storedPhotos, setStoredPhotos] = useState<string[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
 
+  // Chargement des photos précédentes au montage
   useEffect(() => {
     const saved = localStorage.getItem('chat_camera_photos');
     if (saved) {
@@ -58,6 +68,10 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
     localStorage.setItem('chat_camera_photos', JSON.stringify(newPhotos));
   };
 
+  /**
+   * Initialise le flux vidéo.
+   * Utilise `facingMode: 'user'` pour privilégier la caméra frontale (selfie).
+   */
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
@@ -68,11 +82,13 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
     }
   };
 
+  // Gestion du cycle de vie de la caméra en fonction de l'ouverture de la modale
   useEffect(() => {
-    if (open && !showGallery) { // Only start camera if gallery is not open (optional, but saves resources)
+    if (open && !showGallery) { // Ne pas activer la caméra si on regarde la galerie
       startCamera();
     }
     return () => {
+      // Nettoyage impératif des tracks pour éteindre la lumière de la caméra
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(track => track.stop());
         streamRef.current = null;
@@ -81,7 +97,7 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
     };
   }, [open, showGallery]);
 
-  // Reset state when modal closes
+  // Reset de l'état interne à la fermeture
   useEffect(() => {
     if (!open) {
       setPreview(null);
@@ -90,6 +106,11 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
     }
   }, [open]);
 
+  /**
+   * Capture l'image actuelle du flux vidéo.
+   * Dessine la frame vidéo sur un canvas pour en extraire une DataURL (base64).
+   * Applique le filtre sélectionné sur le contexte 2D.
+   */
   const takePhoto = () => {
     if (videoRef.current) {
       const canvas = document.createElement('canvas');
@@ -101,6 +122,7 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
         ctx.drawImage(videoRef.current, 0, 0);
         const photoUrl = canvas.toDataURL('image/jpeg', 0.8);
         setPreview(photoUrl);
+        // Arrêter la caméra immédiatement après capture pour figer l'instant
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(track => track.stop());
           streamRef.current = null;
@@ -126,9 +148,7 @@ export default function CameraModal({ open, onClose, onPhoto }: CameraModalProps
 
   const cancelPreview = async () => {
     setPreview(null);
-    // Camera restarts via effect when preview is null? No, startCamera is called in effect dependening on [open].
-    // If I clear preview, I need to ensuring camera is running.
-    // The previous implementation called startCamera explicitly in cancelPreview.
+    // Redémarrer la caméra
     await startCamera();
   };
 
