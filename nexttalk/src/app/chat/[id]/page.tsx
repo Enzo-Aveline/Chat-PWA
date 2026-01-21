@@ -36,6 +36,7 @@ export default function ChatRoomPage() {
 
     const handleBeforeUnload = () => {
       try {
+        leaveRoom(roomId);
         disconnectSocket();
       } catch { }
     };
@@ -94,6 +95,7 @@ export default function ChatRoomPage() {
     return () => {
       try {
         leaveRoom(roomId);
+        disconnectSocket(); // Force disconnect on unmount (navigation) to free the pseudo
       } catch { }
       window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("pagehide", handleBeforeUnload);
@@ -121,7 +123,7 @@ export default function ChatRoomPage() {
     sendingRef.current = true;
     const content = input.trim();
 
-    socket.emit("chat-msg", { content, roomName: roomId, pseudo });
+    socket.emit("chat-msg", { content, roomName: roomId });
     setInput("");
 
     setTimeout(() => {
@@ -190,7 +192,6 @@ export default function ChatRoomPage() {
           socket.emit("chat-msg", {
             content: `[IMAGE] ${imageUrl}`,
             roomName: roomId,
-            pseudo,
           });
         } else {
           console.error("Failed to upload image", await response.text());
@@ -246,7 +247,7 @@ export default function ChatRoomPage() {
           </div>
           <button
             onClick={() => {
-              router.push("/chat/menu");
+              router.back();
             }}
             className="btn btn-ghost btn-sm"
           >

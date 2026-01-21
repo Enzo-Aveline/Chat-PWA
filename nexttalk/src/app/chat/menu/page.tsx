@@ -80,6 +80,7 @@ export default function ChatMenuPage() {
       navigator.geolocation.getCurrentPosition(
         (position) => {
           if (!isMounted) return;
+          setLocationError(null);
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
 
@@ -100,13 +101,16 @@ export default function ChatMenuPage() {
         },
         (error) => {
           if (!isMounted) return;
-          console.error("Geoloc error details:", {
-            code: error.code,
-            message: error.message,
-            PERMISSION_DENIED: error.PERMISSION_DENIED,
-            POSITION_UNAVAILABLE: error.POSITION_UNAVAILABLE,
-            TIMEOUT: error.TIMEOUT
-          });
+          // Ignorer les erreurs vides (souvent dues à des extensions)
+          if (error.message || error.code) {
+            console.error("Geoloc error details:", {
+              code: error.code,
+              message: error.message,
+              PERMISSION_DENIED: error.PERMISSION_DENIED,
+              POSITION_UNAVAILABLE: error.POSITION_UNAVAILABLE,
+              TIMEOUT: error.TIMEOUT
+            });
+          }
           setLocationError("Loc. indisponible");
         }
       );

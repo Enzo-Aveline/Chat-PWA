@@ -28,19 +28,30 @@ const socket: Socket<ServerToClient, ClientToServer> = io("https://api.tools.gav
 
 // Track joined rooms client-side to prevent duplicate emits
 const joinedRooms = new Set<string>();
+const pendingJoins = new Set<string>();
 let connectPromise: Promise<void> | null = null;
 
 export function joinRoom(pseudo: any, roomName: string) {
-  // Already joined this room
-  if (joinedRooms.has(roomName)) {
-    console.log(`[Socket] Already in room: ${roomName}`);
+  // Already joined or joining this room
+  if (joinedRooms.has(roomName) || pendingJoins.has(roomName)) {
+    console.log(`[Socket] Already in room (or joining): ${roomName}`);
     return;
   }
 
+  // Mark as pending immediately
+  pendingJoins.add(roomName);
+
   const doJoin = () => {
+    // If it was removed from pending (e.g. by leaveRoom), don't join
+    if (!pendingJoins.has(roomName)) {
+      console.log(`[Socket] Join cancelled for room: ${roomName}`);
+      return;
+    }
+    
     console.log(`[Socket] Joining room: ${roomName}`);
-    socket.emit("chat-join-room", { pseudo, roomName });
+    pendingJoins.delete(roomName);
     joinedRooms.add(roomName);
+    socket.emit("chat-join-room", { pseudo, roomName });
   };
 
   if (!socket.connected) {
@@ -62,6 +73,13 @@ export function joinRoom(pseudo: any, roomName: string) {
 }
 
 export function leaveRoom(roomName: string) {
+  // If we are pending join, cancel it
+  if (pendingJoins.has(roomName)) {
+    console.log(`[Socket] Cancelling pending join for room: ${roomName}`);
+    pendingJoins.delete(roomName);
+    return;
+  }
+
   if (!joinedRooms.has(roomName)) return;
   console.log(`[Socket] Leaving room: ${roomName}`);
   try {
@@ -74,8 +92,23 @@ export function leaveRoom(roomName: string) {
 
 export function disconnectSocket() {
   console.log("[Socket] Disconnecting");
+  
+  // Attempt to leave all joined rooms cleanly before disconnecting
+  for (const roomName of joinedRooms) {
+    try {
+        console.log(`[Socket] Force leaving room before disconnect: ${roomName}`);
+        socket.emit("chat-leave-room", { roomName });
+    } catch (e) {
+        console.error("Error sending leave-room:", e);
+    }
+  }
+  
   joinedRooms.clear();
+  pendingJoins.clear(); // Also clear pending joins
+  
+  // Always disconnect, even if "connected" is false (it might be connecting)
   socket.disconnect();
+  
   connectPromise = null;
 }
 
