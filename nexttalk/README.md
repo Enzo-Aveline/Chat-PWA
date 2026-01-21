@@ -54,62 +54,73 @@ NextTalk est une application de messagerie moderne et performante construite ave
     cd nexttalk
     ```
 
-2.  **Installer les dépendances :**
+2.  **Installer les dépendances**
     ```bash
     npm install
     ```
 
-3.  **Configuration de l'environnement :**
-    Assurez-vous que les variables d'environnement sont configurées (voir section ci-dessous) ou utilisez les valeurs par défaut.
+3.  **Configuration (.env)**
+    Créez un fichier `.env` à la racine du projet pour configurer l'URL de l'API Socket.io (optionnel, une valeur par défaut est utilisée).
+    ```env
+    NEXT_PUBLIC_SOCKET_URL=https://api.tools.gavago.fr
+    ```
 
-4.  **Lancer le serveur de développement :**
+4.  **Lancer en développement**
     ```bash
     npm run dev
     ```
     L'application sera accessible sur `http://localhost:3000`.
 
-## 🧪 Tests
 
-Le projet utilise **Vitest** pour les tests unitaires et d'intégration.
 
-Pour lancer les tests :
+## 🧪 Tests et CI/CD
 
-1.  **Lancer tous les tests :**
-    ```bash
-    npm test
-    ```
+Le projet intègre deux niveaux de tests pour assurer la robustesse du code.
 
-2.  **Lancer un test spécifique (ex: Header) :**
-    ```bash
-    npm test -- Header
-    ```
-
-### Tests E2E (End-to-End)
-
-Les tests de bout en bout sont gérés par **Playwright**. Ils simulent un navigateur réel pour vérifier les parcours utilisateurs.
-
-1.  **Lancer les tests (mode headless) :**
-    ```bash
-    npm run test-e2e
-    ```
-
-2.  **Lancer avec interface visuelle (mode UI) :**
-    ```bash
-    npx playwright test --ui
-    ```
-
-3.  **Voir le rapport de test :**
-    ```bash
-    npx playwright show-report
-    ```
-
-## 🔐 Variables d'Environnement
-
-L'application utilise les variables suivantes (définies dans `.env` ou `.env.local`) :
-
+### Lancer les Tests Unitaires
+Les tests unitaires (avec Vitest) vérifient la logique métier isolée (ex: IndexedDB).
 ```bash
-NEXT_PUBLIC_SOCKET_URL=https://api.tools.gavago.fr  # URL du serveur Socket.IO
+npm run test
 ```
+
+### Lancer les Tests E2E
+Les tests de bout en bout (avec Playwright) simulent des parcours utilisateurs complets (ex: flux de connexion).
+```bash
+npm run test-e2e
+```
+*Note : Assurez-vous que le serveur de développement ne tourne pas déjà sur le port 3000, ou laissez Playwright le lancer automatiquement.*
+
+### CI/CD
+Bien qu'il n'y ait pas de workflow GitHub Actions configuré par défaut dans ce dépôt, une pipeline CI/CD standard pour ce projet devrait :
+1.  Installer les dépendances (`npm ci`).
+2.  Linter le code (`next lint`).
+3.  Exécuter les tests unitaires (`npm run test`).
+4.  Construire l'application (`npm run build`).
+5.  Exécuter les tests E2E (`npm run test-e2e`).
+
+## 📦 Build et Production
+
+Pour préparer l'application pour la production :
+
+1.  **Compiler le projet**
+    ```bash
+    npm run build
+    ```
+
+2.  **Démarrer le serveur de production**
+    ```bash
+    npm start
+    ```
+
+## 📝 Commandes Utiles
+
+| Commande | Description |
+|---|---|
+| `npm run dev` | Lance le serveur de développement avec TurboPack. |
+| `npm run build` | Compile l'application pour la production. |
+| `npm start` | Démarre l'application compilée. |
+| `npm run test` | Lance les tests unitaires avec Vitest. |
+| `npm run test-e2e` | Lance les tests E2E avec Playwright. |
 
 ## 📦 Structure du Projet
 
